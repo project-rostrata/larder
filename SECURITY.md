@@ -18,10 +18,12 @@ vulnerability itself.
 larder is a self-hosted application: you run your own instance, on infrastructure you control.
 The main areas worth extra scrutiny in reports:
 
-- **Path safety** — every recipe-file-touching endpoint is required to resolve user-supplied
-  paths through a single canonicalizing function before touching disk; see `PROJECT_BRIEF.md`
-  §4. A path that can read, write, or delete outside a user's own home directory is a real
-  vulnerability.
+- **Ownership checks** — every query against `recipes`, `recipe_ingredients`,
+  `meal_plan_entries`, `shopping_lists`, or `shopping_list_items` is required to filter by the
+  authenticated user's `owner_id` (or join through it); see `PROJECT_BRIEF.md` §4 and
+  `AGENTS.md`'s error-handling table. A request that can read, write, or delete another user's
+  rows via a missing ownership check is a real vulnerability — this is larder's equivalent of
+  `shelf`'s path-safety rule.
 - **Auth/session handling** — password hashing and session cookie handling.
 - **SQL injection** — every query is expected to use `PreparedStatement` with bound parameters.
 - **Server-side request forgery via recipe URL import** — the import feature fetches an

@@ -33,7 +33,7 @@ docker compose -f docker/docker-compose.yml up --build
 There's no test framework dependency initially — tests are plain top-level `test*()` functions
 under `backend/test/`, discovered reflectively by `backend/test/TestMain.kt`. Add new ones the
 same way; register the new file's compiled class name in `TestMain.kt`'s list if it's a new
-file. (This may itself change if Phase 5's ingredient-parser test suite grows large enough to
+file. (This may itself change if Phase 4's ingredient-parser test suite grows large enough to
 justify a real test framework — see `AGENTS.md`'s testing section.)
 
 The frontend (`frontend/`) has no build step — it's vendored VanJS and plain ES modules, served
@@ -42,9 +42,9 @@ directly. Changes there are effective on a page reload.
 ## Before opening a PR
 
 - Run `backend/test.sh` and make sure it passes.
-- If you touched anything filesystem-related, re-read the path-safety rule in
-  `PROJECT_BRIEF.md` §4 — every recipe-file-touching endpoint must resolve user-supplied paths
-  through the path-safety function first, no exceptions.
+- If you touched a query against `recipes`, `recipe_ingredients`, `meal_plan_entries`,
+  `shopping_lists`, or `shopping_list_items`, re-read the ownership rule in `PROJECT_BRIEF.md`
+  §4 and `AGENTS.md` — it must filter by `owner_id` (or join through it), no exceptions.
 - If your change touches the ingredient parser or the shopping-list combination logic, add
   real-world test cases, not just synthetic ones — see `AGENTS.md`'s testing section for why.
 - If your change is a real design decision (not just a bug fix), consider adding an entry to

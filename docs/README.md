@@ -4,8 +4,8 @@ larder is a self-hosted recipe manager and meal planner: import and organize rec
 meals, and generate a combined shopping list — without a full groupware suite's app ecosystem
 bolted on, and without image handling. Kotlin backend starting on the bare JDK stdlib (no
 framework, though unlike `shelf` this project may grow into Gradle and a few libraries as real
-needs come up), VanJS frontend, Postgres as a metadata/index cache, real filesystem as the
-source of truth for recipe content.
+needs come up), VanJS frontend, Postgres as the source of truth for everything (recipes
+included) — unlike `shelf`, there is no filesystem-backed content anywhere in this app.
 
 Keep this page short — it's an index, not a place to write things up. Put depth in the linked
 docs instead.

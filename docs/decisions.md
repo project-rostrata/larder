@@ -42,3 +42,38 @@ Phase 1 — this is a raised ceiling, not a different floor. See `PROJECT_BRIEF.
 Explicit scope cut from the human at the start of planning — recipe photos, and the
 storage/proxying/thumbnailing subsystem a "replace Nextcloud Cookbook" app would otherwise
 need for them, are out of scope for v1 entirely.
+
+## Recipe storage reversed: Postgres, not flat files
+
+Supersedes the "Recipe storage format: JSON" entry above. That entry decided one-JSON-file-per-recipe, mirroring `shelf` directly. Revisited
+immediately after, before any code existed, and reversed to normalized Postgres tables
+(`recipes` + `recipe_ingredients`) instead. This log is append-only, so that earlier entry
+stays as written rather than being edited away — treat this entry as the one that supersedes
+it going forward.
+
+Reasoning, in order of weight:
+1. Shopping-list combination — the feature this whole app exists for — needs relational
+   ingredient data (a join/aggregation over rows), not a JSON blob plus a cache index built to
+   keep that blob's metadata queryable.
+2. `meal_plan_entries` and `shopping_lists` were always going to be plain Postgres rows with no
+   file backing (no natural file form for them). File-backed recipes would have been the only
+   thing in the app needing `shelf`'s reconciliation machinery (mtime scanning, nightly
+   backstop scan, path-safety layer, optimistic-concurrency conflict handling) — a meaningful
+   amount of complexity paid for by exactly one table.
+3. That machinery earns its keep in `shelf` because files really do get edited outside the app
+   (SMB, SSH) while the app also serves them. Recipes don't have an equivalent use case in
+   practice — edits go through the app. There was no real benefit being bought with that
+   complexity here.
+
+A JSON-export feature (recipes out as plain files, for backup/portability, without going back
+to file-backed *storage*) was discussed as a way to keep some of what `shelf`'s "just files"
+property offered, and was explicitly deferred rather than ruled out — see
+`PROJECT_BRIEF.md` §5 and §6 (v1.5). The human's framing: "DB as truth, without the export
+feature just yet."
+
+Downstream effects of this reversal, all reflected in `PROJECT_BRIEF.md` and `V1_PLAN.md`
+directly rather than left as an exercise for later: no path-safety phase, no reconciliation
+phase, no per-user home directory, `owner_id` replaces "does this path resolve under the
+user's root" as the access-control invariant that gets audited in the hardening phase, and the
+Docker setup drops the bind-mounted storage volume and `PUID`/`PGID` entrypoint entirely since
+there's no user-facing filesystem content left to manage.

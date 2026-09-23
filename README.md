@@ -8,10 +8,13 @@ app-ecosystem breadth a full groupware suite would bolt on.
 ## Why
 
 `larder` is the same-ethos sibling of [`shelf`](../shelf), a self-hosted file-sharing app: a
-small, auditable, low-dependency stack, with a real filesystem — not a database — as the source
-of truth. Each recipe is one JSON file, readable and editable outside the app (over SSH, SMB,
-whatever you already use). PostgreSQL holds metadata only — an index over recipe files, plus
-meal-plan and shopping-list data that has no natural file form.
+small, auditable, low-dependency stack. Unlike `shelf`, larder has no filesystem-backed content
+at all — recipes, meal plans, and shopping lists are all rows in PostgreSQL, which is the real
+source of truth here rather than just a metadata cache. That's a deliberate divergence from
+`shelf`'s "just files" philosophy: recipes need relational, structured ingredient data to make
+the shopping-list combination feature work in the first place, and there's no real-world
+"someone edits this over SMB outside the app" use case for a recipe the way there is for an
+arbitrary file. See [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) section 4 for the full reasoning.
 
 Where `shelf` never needed anything beyond a bare `kotlinc` build and the Postgres JDBC driver,
 `larder`'s problem domain — parsing recipes out of arbitrary web pages, parsing free-text
@@ -27,7 +30,8 @@ are built the way they are, not just what was built.
 ## Planned v1 features
 
 - Accounts with username/password auth (PBKDF2, cookie-based sessions) — same pattern as `shelf`
-- Per-user home directory of recipes, one JSON file per recipe, no images
+- Recipes stored as normalized Postgres rows (title, tags, structured ingredients,
+  instructions), no images
 - Recipe import from a URL (schema.org JSON-LD)
 - Meal planning: assign recipes to dates/meal slots
 - Shopping list generation from a meal plan or a hand-picked set of recipes, combining shared

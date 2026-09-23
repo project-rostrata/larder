@@ -16,22 +16,22 @@ self-contained. Where larder's conventions diverge from `shelf`'s, it's called o
   etc.), never as a default.
 - Non-null types by default. Avoid `!!` — if you're reaching for it, either the type shouldn't
   be nullable or the code needs an explicit null check with a real error path.
-- `data class` for every value object — DB rows, API DTOs, and the recipe-file format alike
-  (see layering below).
+- `data class` for every value object — DB rows and API DTOs alike (see layering below).
 - Classes stay small and single-purpose. If a class's responsibility needs "and" to describe
   it, split it.
 - Minimal public surface: `private` by default, widen only what callers actually need.
-- File I/O goes through `java.nio.file.Path` / `java.nio.file.Files` (NIO.2) exclusively —
-  never legacy `java.io.File`. NIO.2 has the symlink-resolution and canonicalization primitives
-  (`Path.toRealPath()`, etc.) that Phase 4's path-safety layer depends on directly.
+- No user-content file I/O anywhere in this app — recipes, meal plans, and shopping lists are
+  all Postgres rows (see `PROJECT_BRIEF.md` section 4). Where the app does touch files at all
+  (reading migration SQL, serving static frontend assets), plain NIO.2
+  (`java.nio.file.Path`/`Files`) is fine; there's no path-safety layer to keep consistent with
+  here the way `shelf` had.
 
-## Layering: database objects, API objects, and the recipe file format
+## Layering: database objects vs. API objects
 
-Three separate `data class` hierarchies, never shared: Postgres row classes, API request/
-response classes, and the on-disk recipe JSON format. Convert between them with small, explicit
-mapper functions (e.g. `fun RecipeFile.toApiRecipe(): ApiRecipe`) kept next to whichever side
-owns the conversion. A schema change, an API change, or a recipe-file-format change should each
-be able to happen without silently reshaping the other two.
+Database-row classes and API request/response classes are separate `data class` hierarchies,
+never shared. Convert between them with small, explicit mapper functions (e.g.
+`fun RecipeRow.toApiRecipe(): ApiRecipe`) kept next to whichever side owns the conversion. This
+keeps a schema change from silently reshaping the public API, and vice versa.
 
 **No AutoValue/AutoFactory.** Both exist to give Java the immutable-value-object ergonomics
 Kotlin's `data class` already provides for free. See `shelf`'s `docs/decisions.md` for the full
@@ -43,8 +43,8 @@ reasoning if it needs re-litigating here (it shouldn't).
 (`Main.kt`'s `main()`, or a small `Wiring.kt` it calls into). Every service is constructed
 there and handed to whatever needs it via its constructor.
 
-**Singletons:** most services in this app (auth, recipe storage, the index, the ingredient
-parser) are conceptually one-per-process. Implement that as *one instance, constructed once in
+**Singletons:** most services in this app (auth, recipe storage, the ingredient parser) are
+conceptually one-per-process. Implement that as *one instance, constructed once in
 the composition root, passed via constructor* — not a Kotlin `object` declaration. Reserve
 `object` for genuinely stateless things — pure helper functions, constants.
 
@@ -64,7 +64,7 @@ the router and turned into a 500.
 Every error response is the same JSON shape:
 
 ```json
-{"error": {"code": "PATH_OUTSIDE_ROOT", "message": "Requested path resolves outside the user's home directory"}}
+{"error": {"code": "NOT_OWNED", "message": "Recipe does not belong to the authenticated user"}}
 ```
 
 Status codes are used consistently:
@@ -73,9 +73,9 @@ Status codes are used consistently:
 |---|---|
 | 400 | Malformed or invalid request input |
 | 401 | Missing or invalid session |
-| 403 | Path-safety violation, or an authenticated user acting outside their permissions |
+| 403 | An authenticated user acting on a row they don't own — every query against `recipes`, `recipe_ingredients`, `meal_plan_entries`, `shopping_lists`, or `shopping_list_items` must filter by `owner_id` (or join through it); this is larder's equivalent of `shelf`'s path-safety rule and gets the same "no exceptions" treatment, audited in `V1_PLAN.md` Phase 11 |
 | 404 | Resource not found |
-| 409 | Optimistic-concurrency conflict (stale mtime/ETag on write) |
+| 409 | Optimistic-concurrency conflict (stale `updated_at` on write) |
 | 422 | Well-formed request the app can't act on (e.g. a recipe import URL with no parseable JSON-LD) |
 | 500 | Unexpected/programmer error |
 
@@ -89,8 +89,9 @@ Handlers are plain blocking code, run on a bounded thread-pool `Executor` set vi
 `HttpServer.setExecutor(...)`. No coroutines by default; `kotlinx.coroutines` is pre-approved
 if a genuine need shows up, same as `shelf`'s policy.
 
-Background/periodic work (the reconciliation backstop scan) uses a plain
-`ScheduledExecutorService` — no job-scheduling framework.
+There's no reconciliation/background-scan job in this app at all (unlike `shelf` — see
+`PROJECT_BRIEF.md` section 4). If a genuine need for periodic background work shows up later,
+a plain `ScheduledExecutorService` is the default — no job-scheduling framework.
 
 ## Logging
 
@@ -102,7 +103,7 @@ sign-off like anything else).
 
 Environment variables only, read at startup with sane defaults where one makes sense. No
 config-file parser, no config library. `LARDER_`-prefixed, matching `shelf`'s `SHELF_`
-convention (e.g. `LARDER_DB_URL`, `LARDER_STORAGE_ROOT`).
+convention (e.g. `LARDER_DB_URL`, `LARDER_PORT`).
 
 ## Testing
 
@@ -112,7 +113,7 @@ top-level `test<Something>()` functions in `.kt` files under `backend/test/` (pa
 `backend/src/`, never nested inside it). `backend/test.sh` compiles both and runs it, same as
 `shelf`'s script.
 
-**Phase 5's ingredient-line parser needs unusually thorough tests** — pull real ingredient
+**Phase 4's ingredient-line parser needs unusually thorough tests** — pull real ingredient
 lines from a handful of real recipe sites as test cases, not just synthetic ones, since this
 module's real-world accuracy is the thing the shopping-list feature actually depends on. If the
 hand-rolled runner starts straining under a large, data-driven test set (many parser cases
@@ -127,7 +128,7 @@ Postgres JDBC driver, any `kotlinx.*` library, and `kotlin-test`** — but the h
 explicitly said it's fine to move to Gradle and to add other external dependencies when a
 specific, real need justifies it (this app's problem domain — HTML/recipe parsing, ingredient
 text parsing — is harder than a file browser's). The most likely candidate, flagged in advance
-in `PROJECT_BRIEF.md` section 4 and `V1_PLAN.md` Phase 7, is a proper HTML parser (`jsoup`) if
+in `PROJECT_BRIEF.md` section 4 and `V1_PLAN.md` Phase 6, is a proper HTML parser (`jsoup`) if
 schema.org JSON-LD extraction turns out not to cover enough real recipe sites.
 
 The rule that doesn't loosen: **propose the specific dependency (or the move to Gradle) and the

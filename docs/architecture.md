@@ -8,13 +8,20 @@ changes.
 
 ## Status
 
-**Phases 0 and 1 are done.** Repo scaffold, planning docs, and a backend skeleton: a
-hand-rolled router on `com.sun.net.httpserver.HttpServer`, the sealed `ApiResult`/JSON
-error-envelope pattern, a pooled JDBC connection to Postgres, and two endpoints
-(`GET /api/health`, `GET /api/version`) as the reference pattern everything after copies.
-Verified end-to-end against a real `postgres:18.6-alpine` container (health check, version
-query through the pool, and the router's 404 error envelope for an unmatched route) — not just
-compiled.
+**Phases 0–2 are done.** Repo scaffold, planning docs, a backend skeleton (hand-rolled router,
+sealed `ApiResult`/JSON error-envelope pattern, pooled JDBC connection, `GET /api/health` and
+`GET /api/version`), and the full v1 database schema: `users`, `sessions`, the global
+`ingredients`/`ingredient_aliases`/`units`/`unit_conversions` vocabulary (seeded with 21
+starter units), `recipes` (soft-delete via `deleted_at`), `recipe_ingredients`,
+`meal_plan_entries`, `shopping_lists`, `shopping_list_items`, `shopping_list_item_sources` — a
+hand-rolled migration runner (ported from `shelf`'s) applies them on startup. Verified
+end-to-end against a real `postgres:18.6-alpine` container each phase, not just compiled:
+Phase 1's health/version/404 round-trip, and Phase 2's migrations actually applying plus every
+constraint that matters exercised directly (case-insensitive ingredient/alias uniqueness, the
+paired-nullability and positive-denominator quantity `CHECK`s, the count-dimension/
+`to_base_factor` `CHECK`, the scoped-vs-global `unit_conversions` partial unique indexes, and —
+the one this schema exists to get right — that hard-deleting a meal-planned recipe is blocked
+by `ON DELETE RESTRICT` while soft-deleting it succeeds and the meal-plan entry survives).
 
 ## System shape
 
@@ -51,15 +58,22 @@ larder/
         ConnectionPool.kt       fixed-size pool of JDBC connections, opened once at startup
         Database.kt              queryOne/queryOneOrNull/queryList/update, all
                                   PreparedStatement-bound — see AGENTS.md's SQL-injection rule
+        MigrationRunner.kt       hand-rolled migration runner, ported from shelf's — discovers
+                                  NNN_*.sql files, tracks applied versions in
+                                  schema_migrations, runs pending ones in a transaction each
     lib/
       DEPENDENCIES.sha1        filename/sha1/source-url manifest — see AGENTS.md
       fetch-deps.sh             downloads + verifies the jars above; jars themselves are
                                  gitignored
     build.sh                   bare kotlinc compile, no Gradle/Maven (see AGENTS.md's
                                  dependency/build-tool policy for when that might change)
-    run.sh                     runs the compiled backend
+    run.sh                     runs the compiled backend; defaults LARDER_MIGRATIONS_DIR to
+                                 ../db/migrations for local dev
   frontend/                    empty — Phase 9
-  db/migrations/               empty — Phase 2
+  db/
+    migrations/
+      0001_initial_schema.sql   all v1 tables, indexes, and constraints (PROJECT_BRIEF.md §7)
+      0002_seed_units.sql       21 starter units (volume/mass/count) with conversion factors
   docker/                      empty — Phase 10
 ```
 
@@ -80,9 +94,10 @@ Read from environment variables at startup (`Main.kt`), no config file:
 | `LARDER_DB_USER` | yes | — |
 | `LARDER_DB_PASSWORD` | yes | — |
 | `LARDER_DB_POOL_SIZE` | no | `10` |
+| `LARDER_MIGRATIONS_DIR` | yes | — (`run.sh` defaults it to `../db/migrations` for local dev) |
 
 ## Not built yet
 
-Everything past Phase 1: database schema (recipes/ingredients/meal-plan/shopping-list tables),
-auth, the ingredient-line parser, recipe CRUD, URL import, meal planning, shopping-list
-generation, the frontend, and Docker packaging. See `V1_PLAN.md` for the phase order.
+Everything past Phase 2: auth, the ingredient-line parser, recipe CRUD, URL import, meal
+planning, shopping-list generation, the frontend, and Docker packaging. See `V1_PLAN.md` for
+the phase order.

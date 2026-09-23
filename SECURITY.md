@@ -23,9 +23,14 @@ The main areas worth extra scrutiny in reports:
   is required to filter by the authenticated user's `owner_id` (or join through it); see
   `PROJECT_BRIEF.md` §4 and `AGENTS.md`'s error-handling table. A request that can read, write,
   or delete another user's rows via a missing ownership check is a real vulnerability — this is
-  larder's equivalent of `shelf`'s path-safety rule. (`ingredients`, `ingredient_aliases`,
-  `units`, and `unit_conversions` are intentionally global/unscoped — see `PROJECT_BRIEF.md` §4
-  — don't report the absence of an `owner_id` check on those four as a finding.)
+  larder's equivalent of `shelf`'s path-safety rule. This includes a client-supplied id
+  referencing another owner-scoped row (e.g. a `recipe_id` in a meal-plan-entry or
+  shopping-list-generation request) — a foreign key only proves the row exists, not that the
+  caller owns it; an endpoint that lets one user plan a meal or generate a shopping list from
+  another user's private recipe by guessing/enumerating its id is exactly this vulnerability.
+  (`ingredients`, `ingredient_aliases`, `units`, and `unit_conversions` are intentionally
+  global/unscoped — see `PROJECT_BRIEF.md` §4 — don't report the absence of an `owner_id` check
+  on those four as a finding.)
 - **Auth/session handling** — password hashing and session cookie handling.
 - **SQL injection** — every query is expected to use `PreparedStatement` with bound parameters.
 - **Server-side request forgery via recipe URL import** — the import feature fetches an

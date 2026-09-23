@@ -163,7 +163,10 @@ data, not a cache of something else.
 ## Phase 7 — Meal planning
 
 - `GET /api/meal-plan?from=...&to=...`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` —
-  CRUD for `meal_plan_entries` (date, meal slot, recipe id, servings multiplier).
+  CRUD for `meal_plan_entries` (date, meal slot, recipe id, servings multiplier). `POST` must
+  verify the client-supplied `recipe_id` resolves to a recipe owned by the authenticated user
+  before creating the entry — the FK only proves the recipe exists, not that it's theirs (see
+  `AGENTS.md`'s ownership rule).
 - Servings multiplier per entry, recipe row itself never mutated — this is now a settled
   decision (brief section 4's "Recipe scaling"), not an open question to re-flag. Multiplying a
   recipe's `servings` (the numeric field) by this factor, never `servings_text` (display-only),
@@ -171,10 +174,12 @@ data, not a cache of something else.
 
 ## Phase 8 — Shopping list generation
 
-- `POST /api/shopping-lists { recipe_ids } | { meal_plan_from, meal_plan_to }` — gathers every
-  ingredient across the selected recipes (a query against `recipe_ingredients`, scaled by each
-  meal-plan entry's servings multiplier where applicable), and combines per brief section 4's
-  rules:
+- `POST /api/shopping-lists { recipe_ids } | { meal_plan_from, meal_plan_to }` — the
+  `recipe_ids` form must filter to recipes owned by the authenticated user (same ownership rule
+  as Phase 7's `recipe_id`, `AGENTS.md`) before gathering anything, not just trust the list.
+  Gathers every ingredient across the selected recipes (a query against `recipe_ingredients`,
+  scaled by each meal-plan entry's servings multiplier where applicable), and combines per
+  brief section 4's rules:
   - Same `ingredient_id` + compatible unit (same `unit_id`, same dimension via
     `to_base_factor`, or a matching `unit_conversions` row — checked in that order, no
     multi-hop chaining) → combine. Two unresolved lines with identical normalized `raw_text`
@@ -225,7 +230,10 @@ data, not a cache of something else.
 - Audit every query that touches `recipes`, `recipe_ingredients`, `meal_plan_entries`,
   `shopping_lists`, `shopping_list_items`, or `shopping_list_item_sources` for an `owner_id` (or
   joined-through-owner) check — this is larder's equivalent of `shelf`'s path-safety audit: the
-  one property that must never have an exception. `ingredients`, `ingredient_aliases`, `units`,
+  one property that must never have an exception. Specifically check every endpoint that
+  accepts a `recipe_id` from the client (Phase 7's meal-plan create, Phase 8's shopping-list
+  generation) actually verifies ownership of that referenced recipe, not just that it exists —
+  see `AGENTS.md`'s ownership rule. `ingredients`, `ingredient_aliases`, `units`,
   and `unit_conversions` are the **one deliberate exception** (brief section 4, global
   instance-wide vocabulary) — confirm access to those four is appropriately unscoped, not that
   it's missing an `owner_id` check it was never supposed to have.

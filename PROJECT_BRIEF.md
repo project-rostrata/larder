@@ -339,7 +339,7 @@ ingredient across them, and:
 ## 7. Data model sketch (Postgres)
 
 ```
-users(id, username, password_hash, created_at, is_admin)
+users(id, username, password_hash, created_at)
 sessions(id, user_id, created_at, expires_at)
 
 -- Global, instance-wide — NOT owner_id-scoped; see section 4's canonicalization note.

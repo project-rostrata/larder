@@ -11,6 +11,10 @@ KOTLIN_HOME="${KOTLIN_HOME:-/opt/kotlinc}"
 
 CP="$OUT_DIR:$LIB_DIR/postgresql-42.7.13.jar:$LIB_DIR/kotlinx-serialization-core-jvm-1.11.0.jar:$LIB_DIR/kotlinx-serialization-json-jvm-1.11.0.jar:$KOTLIN_HOME/lib/kotlin-stdlib.jar"
 
+# Local-dev default, relative to this script's cwd (backend/); the Docker image sets this explicitly instead.
+: "${LARDER_MIGRATIONS_DIR:=../db/migrations}"
+export LARDER_MIGRATIONS_DIR
+
 java \
   -cp "$CP" \
   MainKt "$@"

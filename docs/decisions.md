@@ -178,3 +178,23 @@ behavior versus independently reasoned, the honest breakdown turned out to be:**
   `CHECK`-constrained enum (the opposite choice from `units.dimension`, made because meal-slot
   labels are user-facing vocabulary that shouldn't be closed, unlike a physical-unit dimension).
   None of these have a `shelf` equivalent to have copied from.
+
+## Phase 2 implementation: dropped `is_admin`, added a cross-reference ownership rule
+
+Two things caught while actually writing the migration, both fixed in the same pass rather
+than left for later:
+
+- **`users.is_admin`** was in `PROJECT_BRIEF.md` §7's original sketch, copied from `shelf`'s
+  own `users` table without being re-examined — the same category of mistake as the hard-delete
+  carry-over above, just lower-stakes. larder has no admin panel, no multi-tenant management
+  feature, and nothing in `V1_PLAN.md` ever reads this column. Dropped from the schema; trivial
+  to add back with a one-line migration if an actual admin feature is ever planned.
+- **Cross-referenced ownership isn't the same check as direct-row ownership.** `shelf` never had
+  this problem — none of its tables reference another owner-scoped row by id. larder's
+  `meal_plan_entries.recipe_id` and Phase 8's shopping-list generation both accept a `recipe_id`
+  from the client and use it to look up a *different* owner-scoped row than the one being
+  written. A foreign key only proves that row exists, not that the caller owns it — verifying
+  `recipe.owner_id == authenticated_user.id` for every such reference is a distinct check from
+  "does this query filter by owner_id," easy to miss precisely because it looks like the same
+  rule. Added explicitly to `AGENTS.md`'s ownership row, `SECURITY.md`, and `V1_PLAN.md`'s
+  Phase 7/8/11 text so it isn't missed when those phases are actually built.

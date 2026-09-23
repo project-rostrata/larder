@@ -41,13 +41,26 @@ are built the way they are, not just what was built.
 Not planned for v1, deliberately: images, recipe search, sharing, nutrition info — see
 [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) §5–6 for what's deferred and why.
 
-**Status: pre-implementation.** This repo currently holds the planning documents and directory
-scaffold only — see [`V1_PLAN.md`](V1_PLAN.md) for the phase-by-phase build order.
+**Status: early build.** Phases 0–1 of [`V1_PLAN.md`](V1_PLAN.md) are done — a backend skeleton
+(router, JSON error envelopes, a pooled JDBC connection) with two endpoints. See
+[`docs/architecture.md`](docs/architecture.md) for what's actually built right now.
 
 ## Quick start
 
-Not yet runnable — Phase 1 of [`V1_PLAN.md`](V1_PLAN.md) is the first phase with any code to
-build or run.
+No Docker/frontend/schema yet — those land in later phases. To run just the current backend
+skeleton against a local Postgres:
+
+```
+cd backend
+./lib/fetch-deps.sh
+./build.sh
+LARDER_DB_URL=jdbc:postgresql://localhost:5432/larder \
+LARDER_DB_USER=larder \
+LARDER_DB_PASSWORD=... \
+  ./run.sh
+```
+
+`GET /api/health` and `GET /api/version` (port 8080 by default) are the only routes so far.
 
 ## Documentation
 

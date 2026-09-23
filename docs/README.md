@@ -18,8 +18,8 @@ docs instead.
   any code.
 - **[decisions.md](decisions.md)** — append-only log of decisions made while building larder
   that aren't already settled by the brief or plan. Check here before re-litigating something.
-- **architecture.md** — *not yet written; add once Phase 1 lands.* Living doc of what's
-  actually built, updated every time the as-built system changes.
+- **[architecture.md](architecture.md)** — living doc: what's actually built right now and how
+  the pieces fit together. Updated every time the as-built system changes.
 - **database.md** — *not yet written; add once Phase 2 lands.* Postgres version, extensions,
   schema notes.
 - **phases/** — *not yet created; add per-phase planning docs here as `V1_PLAN.md`'s phases are

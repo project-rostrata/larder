@@ -1,0 +1,4 @@
+.git
+backend/out
+backend/out-test
+backend/lib/*.jar

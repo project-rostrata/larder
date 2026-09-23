@@ -134,3 +134,47 @@ findings:**
   already-known, and what the interaction for manually merging shopping-list items looks like.
   Both are explicit "build the capability now, design the UI later" calls from the human, not
   oversights — see `PROJECT_BRIEF.md` §5.
+
+## Recipe deletion is a soft delete — reversing an unexamined inheritance from `shelf`
+
+While reviewing what else Phase 2 needed settled before implementation, an early draft proposed
+`meal_plan_entries.recipe_id ON DELETE CASCADE` — reasoning it as "the natural extension of
+`shelf`'s hard-delete, no-trash philosophy," which `PROJECT_BRIEF.md` had otherwise carried over
+unexamined. The human caught this: unlike `shelf` (where a deleted file really should just be
+gone), larder needs recipe deletion to preserve historical meal-plan integrity — a meal plan
+from three weeks ago should still show what was planned even if that recipe has since been
+removed from the active collection.
+
+`recipes` now carries `deleted_at TIMESTAMPTZ NULL` instead. This is deliberately narrower than
+a full trash feature (no restore endpoint, no purge job, no trash view in v1) — it solves the
+specific "a plain FK shouldn't lose its target" problem, not a general undo feature. Notably,
+`shopping_list_item_sources` never had this problem in the first place: it was already designed
+(before this decision) to snapshot recipe title/quantity/unit specifically so a generated
+shopping list survives its source recipes being edited or deleted later. Soft-deleting recipes
+fixes the same underlying concern for `meal_plan_entries` (and anything else that references
+`recipe_id` in the future) at the source, rather than requiring every consumer to duplicate that
+snapshot pattern. Scoped to recipes only — `meal_plan_entries` and `shopping_lists`/
+`shopping_list_items` still hard-delete normally; an ingredient's `merge-into` cleanup delete is
+unaffected since nothing references that row by the time it's removed.
+
+**Asked to account for which other Phase-2 decisions were actually inspected from `shelf`'s
+behavior versus independently reasoned, the honest breakdown turned out to be:**
+- **Actually inspected from `shelf`'s real schema** (`shelf/db/migrations/0001_initial_schema.sql`,
+  read directly, not recalled from memory): UUID primary keys via `gen_random_uuid()` and
+  `TIMESTAMPTZ NOT NULL DEFAULT now()` for timestamps — except `sessions.id`, which `shelf`
+  deliberately gives **no default**, generating the token explicitly in application code with a
+  CSPRNG rather than leaving it to the database; larder's `sessions` table follows that same
+  exception. Also inspected and matched: `shelf`'s `CHECK (... IN (...))` pattern for small
+  fixed-vocabulary text columns (used there for `share_type`/`permissions`) — applied to
+  `units.dimension` (`'volume' | 'mass' | 'count'`), which is a truly closed set the app's own
+  conversion logic depends on. And the Postgres version pin (18.6-alpine), matching `shelf`'s
+  own pinned version with no reason to diverge.
+- **Not inspected from `shelf` — independent judgment on larder-only concepts with no `shelf`
+  analog to inspect:** the case-insensitive uniqueness constraints on `ingredients.name` and
+  `ingredient_aliases.alias` (preventing the auto-create-on-miss lookup from racing into
+  duplicates or ambiguous alias mappings), `unit_conversions` storing one row per pair rather
+  than both directions, `recipes.servings` being `NUMERIC` rather than `INTEGER`, and
+  `meal_plan_entries.meal_slot` being deliberately *un*constrained `TEXT` rather than a
+  `CHECK`-constrained enum (the opposite choice from `units.dimension`, made because meal-slot
+  labels are user-facing vocabulary that shouldn't be closed, unlike a physical-unit dimension).
+  None of these have a `shelf` equivalent to have copied from.

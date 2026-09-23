@@ -215,6 +215,28 @@ always preserved and always what displays by default, so a bad parse means an in
 doesn't get auto-combined on a shopping list — never a data-loss or wrong-display failure. The
 manual-merge escape hatch below is the accepted workaround for exactly this gap.
 
+**Recipe deletion is a soft delete — the one deliberate divergence from `shelf`'s hard-delete
+philosophy.** `shelf` hard-deletes with no trash (brief section 6's original v1 scope, inherited
+unexamined into an early draft of this brief too). That's wrong for larder specifically: a
+`meal_plan_entries` row is a plain FK to `recipe_id`, not a snapshot the way
+`shopping_list_item_sources` is — if the recipe it points at were actually removed, a historical
+meal plan from three weeks ago would lose the recipe it recorded, or (under the cascade-delete
+proposal this replaces) the meal-plan entry itself would silently vanish. Recipes instead carry
+`deleted_at TIMESTAMPTZ NULL`: `DELETE /api/recipes/{id}` sets it rather than removing the row.
+- Listing (`GET /api/recipes`) excludes soft-deleted recipes; fetching one directly by id
+  (`GET /api/recipes/{id}`) still returns it — that's exactly the path a historical meal-plan
+  entry needs to resolve the recipe it references.
+- Editing a soft-deleted recipe is blocked (no undelete-by-editing).
+- **This is deliberately narrower than a full trash feature** — no restore endpoint, no purge
+  job, no "trash" view in v1. It solves the specific historical-integrity problem, not a general
+  "let me recover anything I deleted" feature; a real restore/purge UI is reasonable v1.5 scope
+  if it turns out to matter, same as `shelf` deferred its own trash feature.
+- **Scoped to recipes only.** `meal_plan_entries` and `shopping_lists`/`shopping_list_items`
+  still hard-delete normally — removing a planned meal or a shopping list you're done with isn't
+  "historical data" in the same sense. An ingredient's `merge-into` cleanup delete (section 4's
+  canonicalization note) is also unaffected: by the time that row is deleted, every reference to
+  it has already been reassigned, so nothing historical depends on it.
+
 **Recipe scaling.** A recipe's `servings` (numeric) is what ingredient quantities are written
 against; a separate `servings_text` (free-text, e.g. "4–6 servings", display-only, never used
 in scaling math — a distinction Tandoor's data model already makes and larder adopts directly)
@@ -330,13 +352,13 @@ unit_conversions(id, from_unit_id, to_unit_id, factor,
 
 recipes(id, owner_id, title, source_url NULL, servings NUMERIC NULL, servings_text NULL,
         prep_time_minutes NULL, cook_time_minutes NULL, total_time_minutes NULL, tags TEXT[],
-        instructions TEXT[], created_at, updated_at)
+        instructions TEXT[], created_at, updated_at, deleted_at NULL)   -- soft delete, see §4
 recipe_ingredients(id, recipe_id, position, raw_text, notes NULL,
                     quantity_numerator NULL, quantity_denominator NULL,
                     unit_id NULL, ingredient_id NULL)
 
 meal_plan_entries(id, owner_id, plan_date, meal_slot, recipe_id, servings_multiplier,
-                   created_at)
+                   created_at)   -- recipe_id resolves even after the recipe is soft-deleted (§4)
 
 shopping_lists(id, owner_id, name, created_at)
 shopping_list_items(id, shopping_list_id, ingredient_id NULL, raw_text,

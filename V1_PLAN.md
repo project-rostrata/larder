@@ -71,6 +71,12 @@ early, on bare `kotlinc`, before anything else copies it.
   `shopping_list_item_sources`. Every table is authoritative — none of it is a cache, unlike
   `shelf`'s `file_index`. `ingredients`/`ingredient_aliases`/`units`/`unit_conversions` are
   global, not `owner_id`-scoped — a deliberate exception, see brief section 4.
+- `recipes` carries `deleted_at TIMESTAMPTZ NULL` (soft delete — brief section 4). This means
+  `meal_plan_entries.recipe_id`'s foreign key is a defensive backstop, not the primary
+  protection — the app's own `DELETE /api/recipes/{id}` (Phase 5) never issues a real SQL
+  `DELETE` against `recipes` at all, it just sets `deleted_at`. Use `ON DELETE RESTRICT` for
+  that FK (not `CASCADE`) so a real hard delete, if one ever happened outside the app, fails
+  loudly instead of silently erasing meal-plan history.
 - Seed `units` with the initial vocabulary (tsp/tbsp/cup/fl oz/pint/quart/gallon for volume;
   g/kg/oz/lb for mass; a handful of common count units) and their `to_base_factor`/`aliases` —
   this is developer-curated data, not something a migration leaves empty for users to fill in.
@@ -120,16 +126,23 @@ data, not a cache of something else.
 
 - `GET /api/recipes?tag=...` — listing, filtered by tag.
 - `GET /api/recipes/{id}` — a single recipe with its ingredients.
-- `POST /api/recipes`, `PUT /api/recipes/{id}`, `DELETE /api/recipes/{id}` — create/edit/delete,
-  writing `recipes` + `recipe_ingredients` rows in one transaction. Manually-entered ingredient
-  lines go through Phase 4's parser too, same as imported ones. The response includes, per
-  ingredient line, whether its `ingredient_id` was newly created or matched an existing row
-  (Phase 4's note) — undisplayed by any UI yet, but present in the API from this phase on.
+- `POST /api/recipes`, `PUT /api/recipes/{id}` — create/edit, writing `recipes` +
+  `recipe_ingredients` rows in one transaction. Manually-entered ingredient lines go through
+  Phase 4's parser too, same as imported ones. The response includes, per ingredient line,
+  whether its `ingredient_id` was newly created or matched an existing row (Phase 4's note) —
+  undisplayed by any UI yet, but present in the API from this phase on.
+- `DELETE /api/recipes/{id}` — **soft delete** (brief section 4): sets `deleted_at`, does not
+  remove the row or its `recipe_ingredients`. `PUT` on an already-deleted recipe returns 404.
+  `GET /api/recipes?tag=...` (listing) filters `WHERE deleted_at IS NULL`; `GET
+  /api/recipes/{id}` (direct fetch) does not — a historical `meal_plan_entries` row still needs
+  to resolve the recipe it references after that recipe's been deleted.
 - `POST /api/ingredients/{id}/merge-into/{targetId}` — folds a duplicate canonical ingredient
   into another: reassign every `recipe_ingredients`/`shopping_list_items` row referencing `{id}`
-  to `{targetId}`, move any aliases over, delete `{id}`. Mirrors Tandoor's `merge_into` pattern
-  (brief section 4) — the recovery path for an auto-created ingredient that turns out to
-  duplicate one that already existed.
+  to `{targetId}`, move any aliases over, **reassign `unit_conversions.ingredient_id` rows too**
+  (dropping one as a duplicate if `{targetId}` already has a conversion for the same unit pair —
+  don't error), then delete `{id}`. Mirrors Tandoor's `merge_into` pattern (brief section 4) —
+  the recovery path for an auto-created ingredient that turns out to duplicate one that already
+  existed.
 
 ## Phase 6 — Recipe URL import
 

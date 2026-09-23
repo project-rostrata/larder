@@ -77,3 +77,60 @@ phase, no per-user home directory, `owner_id` replaces "does this path resolve u
 user's root" as the access-control invariant that gets audited in the hardening phase, and the
 Docker setup drops the bind-mounted storage volume and `PUID`/`PGID` entrypoint entirely since
 there's no user-facing filesystem content left to manage.
+
+## Ingredient/unit model redesigned after researching Mealie, Tandoor Recipes, and Grocy
+
+Before building Phase 4 (ingredient parser) or Phase 8 (shopping-list generation), three real
+OSS recipe/grocery apps were researched specifically for how they solve ingredient identity,
+unit conversion, shopping-list combination, and serving-size scaling — the human asked for this
+explicitly rather than having the design proceed on assumption alone. Findings:
+
+- **Ingredient identity (e.g. "scallion" and "green onion" being the same thing) has no
+  automated solution in any of them.** Mealie has a canonical `IngredientFood` with an alias
+  list, but a maintainer confirmed alias creation is manual, not semantic/NLP matching. Tandoor
+  is exact-match only, with a user-authored rewrite-rule mechanism and a `merge_into` admin
+  action for fixing duplicates after the fact. Conclusion: a curated `ingredients` +
+  `ingredient_aliases` table, exact match only, with a Tandoor-style merge-after-the-fact
+  recovery path, is the actual state of the art here, not a corner being cut.
+- **Units: Mealie's `standard_quantity`/`standard_unit` design (each unit declares a factor
+  against a shared per-dimension reference unit) is cleaner than a hardcoded pairwise
+  conversion table**, so larder adopted that shape (`units.to_base_factor`) for the common
+  volume/mass case. Tandoor (a per-food `UnitConversion` model) and Grocy (per-product "QU
+  Conversions") independently confirmed the same pattern for the exception case — count-style
+  units like "clove" or "can" needing an ingredient-specific conversion factor, not a universal
+  one. Both pieces went into larder's `units`/`unit_conversions` design — see
+  `PROJECT_BRIEF.md` §4 and §7 for the resulting schema.
+- **Shopping-list combination is a real, unsolved gap even in the most mature OSS competitor
+  researched.** Tandoor does not combine ingredients across recipes at all — one line item per
+  recipe-ingredient, unsummed. Mealie does combine (`can_merge`/`merge_items`), and that logic
+  is the concrete reference larder's own combination rule is modeled on.
+- **Scaling: neither app stores quantity as a fraction.** Mealie uses a plain float and has a
+  live, reported floating-point bug from it. Tandoor uses a high-precision `Decimal`, which
+  avoids that specific bug but still can't represent a repeating fraction like `1/3` exactly.
+  larder stores quantity as an integer numerator/denominator instead — not hedging on this as a
+  possible over-engineering; it's a documented real gap in both apps researched. Tandoor's
+  separate `servings`/`servings_text` split (one numeric, used for scaling math; one free-text,
+  display-only) was adopted directly.
+
+**Follow-up decisions made the same session, from the human directly, after reviewing these
+findings:**
+- **A manual "merge these shopping-list items" operation is the accepted workaround for
+  whatever automatic ingredient matching misses**, rather than trying to push automatic
+  matching further (e.g. toward fuzzy/semantic matching, which section 4 already treats as
+  effectively unsolved in this space). The human's own current tool for this problem — a paid,
+  more curation-focused competing app — takes the same "not perfect, but has an easy manual
+  fix" approach, which is the bar larder is aiming for too, not perfection.
+- **Every combined shopping-list item must retain each contributing recipe's original quantity
+  and unit**, not just a converted total — e.g. a combined "1 lb flour" item should still be
+  able to show "4 cups, from Recipe A" and "3 tbsp, from Recipe B" on demand. This is a stated
+  requirement, not a nice-to-have, and is why `shopping_list_item_sources` exists as a real
+  snapshot table rather than the flat `source_recipe_ids` array originally sketched.
+- **Recipe curation/discovery stays explicitly out of scope** — recipes are entered or imported
+  one at a time by a human; larder is not trying to compete with the discovery-focused side of
+  what that paid competing app does, only its shopping-list-combination behavior was relevant
+  inspiration here.
+- **Two UX surfaces are deliberately deferred without deferring the data model that supports
+  them:** whether a recipe entry/import view indicates that an ingredient is newly-created vs.
+  already-known, and what the interaction for manually merging shopping-list items looks like.
+  Both are explicit "build the capability now, design the UI later" calls from the human, not
+  oversights — see `PROJECT_BRIEF.md` §5.

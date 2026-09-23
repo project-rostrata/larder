@@ -66,9 +66,14 @@ early, on bare `kotlinc`, before anything else copies it.
 ## Phase 2 — Database schema
 
 - `db/migrations/0001_initial_schema.sql` implementing brief section 7 in full: `users`,
-  `sessions`, `recipes`, `recipe_ingredients`, `meal_plan_entries`, `shopping_lists`,
-  `shopping_list_items`. Every table is authoritative — none of it is a cache, unlike `shelf`'s
-  `file_index`.
+  `sessions`, `ingredients`, `ingredient_aliases`, `units`, `unit_conversions`, `recipes`,
+  `recipe_ingredients`, `meal_plan_entries`, `shopping_lists`, `shopping_list_items`,
+  `shopping_list_item_sources`. Every table is authoritative — none of it is a cache, unlike
+  `shelf`'s `file_index`. `ingredients`/`ingredient_aliases`/`units`/`unit_conversions` are
+  global, not `owner_id`-scoped — a deliberate exception, see brief section 4.
+- Seed `units` with the initial vocabulary (tsp/tbsp/cup/fl oz/pint/quart/gallon for volume;
+  g/kg/oz/lb for mass; a handful of common count units) and their `to_base_factor`/`aliases` —
+  this is developer-curated data, not something a migration leaves empty for users to fill in.
 - Reuse `shelf`'s hand-rolled migration runner pattern (numbered `NNN_*.sql` files, a
   `schema_migrations` tracking table) — no Flyway/Liquibase.
 
@@ -87,14 +92,25 @@ Build and unit-test this standalone, before Phase 5 or Phase 6 depend on it — 
 equivalent of `shelf`'s Phase 4 (path safety) in risk profile, even though the subject matter
 is completely different.
 
-- Input a raw string (`"2 1/2 cups all-purpose flour, sifted"`), output
-  `{quantity, unit, name, notes, raw_text}`. Cover mixed numbers, simple fractions, decimals, a
-  fixed unit vocabulary (and common abbreviations — `tbsp`/`tablespoon`/`tablespoons`), and a
-  trailing comma-clause as notes. Unparsed lines fall back to
-  `{quantity: null, unit: null, name: raw_text, notes: null}` — never throw on a line that
-  doesn't fit the pattern.
+- Input a raw string (`"2 1/2 cups all-purpose flour, sifted"`), output a quantity fraction
+  (`quantity_numerator`/`quantity_denominator`), a resolved `unit_id` (matched against
+  `units.name`/`abbreviation`/`aliases`), a resolved `ingredient_id` (matched against
+  `ingredients`/`ingredient_aliases`, exact match after normalization — auto-creating a new
+  canonical `ingredients` row on a miss, per brief section 4), `notes` (trailing comma-clause),
+  and always `raw_text`. Cover mixed numbers, simple fractions, and decimals for the quantity
+  (a decimal input still converts to an exact reduced fraction — e.g. `2.5` → `5/2`). Unparsed
+  lines fall back to null quantity/unit/ingredient with just `raw_text` — never throw on a line
+  that doesn't fit the pattern.
+- The create/import call this feeds into (Phase 5/6) must be able to report, per ingredient
+  line, whether its `ingredient_id` was matched to a pre-existing row or created new during that
+  call — this falls out of the get-or-create lookup itself, no extra state needed. Don't lose
+  this signal on the way out of the parser/lookup step; it's the hook brief section 5's deferred
+  "is this ingredient known?" UI will eventually use.
 - Write real test cases from real recipe sites' ingredient lists, not just synthetic examples —
-  this module's quality is what makes or breaks the shopping-list feature.
+  this module's quality is what makes or breaks the shopping-list feature. Expect meaningfully
+  lower accuracy than the CRF-based parsers researched for this design (Mealie's own, and
+  `strangetom/ingredient-parser`'s 94.9%) — that's an accepted tradeoff (see brief section 4),
+  not a bar this module needs to clear.
 
 ## Phase 5 — Recipe CRUD
 
@@ -106,17 +122,27 @@ data, not a cache of something else.
 - `GET /api/recipes/{id}` — a single recipe with its ingredients.
 - `POST /api/recipes`, `PUT /api/recipes/{id}`, `DELETE /api/recipes/{id}` — create/edit/delete,
   writing `recipes` + `recipe_ingredients` rows in one transaction. Manually-entered ingredient
-  lines go through Phase 4's parser too, same as imported ones.
+  lines go through Phase 4's parser too, same as imported ones. The response includes, per
+  ingredient line, whether its `ingredient_id` was newly created or matched an existing row
+  (Phase 4's note) — undisplayed by any UI yet, but present in the API from this phase on.
+- `POST /api/ingredients/{id}/merge-into/{targetId}` — folds a duplicate canonical ingredient
+  into another: reassign every `recipe_ingredients`/`shopping_list_items` row referencing `{id}`
+  to `{targetId}`, move any aliases over, delete `{id}`. Mirrors Tandoor's `merge_into` pattern
+  (brief section 4) — the recovery path for an auto-created ingredient that turns out to
+  duplicate one that already existed.
 
 ## Phase 6 — Recipe URL import
 
 - `POST /api/recipes/import { url }`: fetch with `java.net.http.HttpClient`, extract
   `<script type="application/ld+json">` blocks via regex, parse with
   `kotlinx.serialization.json`, find a `Recipe`-typed object (top-level or inside `@graph`),
-  map its fields (`name`, `recipeIngredient`, `recipeInstructions`, `recipeYield`, `prepTime`/
-  `cookTime`/`totalTime` as ISO 8601 durations, `keywords`) onto `recipes`/`recipe_ingredients`
-  rows, running every `recipeIngredient` string through Phase 4's parser.
-  No image field is read or stored, per brief section 2.
+  map its fields (`name`, `recipeIngredient`, `recipeInstructions`, `recipeYield` → `servings`/
+  `servings_text`, `prepTime`/`cookTime`/`totalTime` as ISO 8601 durations, `keywords`) onto
+  `recipes`/`recipe_ingredients` rows, running every `recipeIngredient` string through Phase 4's
+  parser — `recipeIngredient` is confirmed (brief section 4, via `recipe-scrapers`' own source)
+  to always be raw unparsed strings, so this parser is load-bearing here, not a fallback.
+  No image field is read or stored, per brief section 2. Same as Phase 5, the response flags
+  which ingredient lines resolved to a new vs. existing canonical ingredient.
 - If this phase reveals that JSON-LD coverage is too thin across real-world recipe sites to be
   useful, that's the trigger point for raising the `jsoup`/HTML-parsing dependency question
   from brief section 4 — don't silently add it, surface it first.
@@ -125,20 +151,39 @@ data, not a cache of something else.
 
 - `GET /api/meal-plan?from=...&to=...`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` —
   CRUD for `meal_plan_entries` (date, meal slot, recipe id, servings multiplier).
-- Uses brief section 5's proposed default (servings multiplier per entry, recipe row itself
-  never mutated) — flag to the human before this phase locks the behavior in if it hasn't been
-  confirmed by then.
+- Servings multiplier per entry, recipe row itself never mutated — this is now a settled
+  decision (brief section 4's "Recipe scaling"), not an open question to re-flag. Multiplying a
+  recipe's `servings` (the numeric field) by this factor, never `servings_text` (display-only),
+  is what determines each entry's actual scaled ingredient quantities.
 
 ## Phase 8 — Shopping list generation
 
 - `POST /api/shopping-lists { recipe_ids } | { meal_plan_from, meal_plan_to }` — gathers every
   ingredient across the selected recipes (a query against `recipe_ingredients`, scaled by each
-  meal-plan entry's servings multiplier where applicable), combines by brief section 4's rules
-  (exact normalized name + same unit family, hand-rolled conversion table, non-combinable items
-  kept separate), and persists the result as a `shopping_lists`/`shopping_list_items` row set.
+  meal-plan entry's servings multiplier where applicable), and combines per brief section 4's
+  rules:
+  - Same `ingredient_id` + compatible unit (same `unit_id`, same dimension via
+    `to_base_factor`, or a matching `unit_conversions` row — checked in that order, no
+    multi-hop chaining) → combine. Two unresolved lines with identical normalized `raw_text`
+    also combine. Everything else stays a separate `shopping_list_items` row.
+  - For every recipe that contributed to a combined item, insert one
+    `shopping_list_item_sources` row: a snapshot of that recipe's title, the ingredient line's
+    `raw_text`, and its quantity/unit *as scaled but before unit conversion* — this is what lets
+    a later view answer "which recipes want this, and how much did each call for" (e.g. a
+    combined "1 lb flour" item whose sources show "4 cups" from one recipe and "3 tbsp" from
+    another). Get this right in this phase even though no UI surfaces it yet — brief section 4
+    calls this a stated requirement, not a nice-to-have.
+  - Persist the result as a `shopping_lists`/`shopping_list_items`/`shopping_list_item_sources`
+    row set — computed once at generation time, not recomputed live on every read.
 - `GET /api/shopping-lists/{id}`, `PATCH /api/shopping-lists/{id}/items/{item_id}` (check off /
   edit / delete), `POST /api/shopping-lists/{id}/items` (add a manual item) — the list is a
   living, editable document once generated, not a one-shot computation.
+- `POST /api/shopping-lists/{id}/items/merge { item_ids }` — merges two or more existing items
+  into one: unions their `shopping_list_item_sources` rows onto the surviving item, sums
+  quantities when units are compatible. This is the explicit, accepted workaround for whatever
+  automatic combination misses (brief section 4) — the exact response shape for an
+  incompatible-unit merge is an implementation detail to work out in this phase, not something
+  the brief prescribes; the UI that would call this endpoint is deferred (brief section 5).
 
 ## Phase 9 — Frontend (VanJS)
 
@@ -146,6 +191,11 @@ data, not a cache of something else.
 - Views: login/register, recipe list (tag filter) + recipe detail/edit, import-from-URL form,
   meal planner (calendar-ish date/slot grid), shopping list view (checkable items, manual add).
 - Plain `fetch` calls to the Phase 1/3/5/6/7/8 API. Responsive layout.
+- Two things the backend already supports but this phase doesn't need to design yet (brief
+  section 5, both explicitly deferred): surfacing whether a recipe's ingredients matched a
+  known ingredient or got auto-created, and a UI for Phase 8's manual item-merge endpoint. Build
+  the v1 views without them; both are a later, separate pass once there's a UX design to build
+  against.
 
 ## Phase 10 — Docker
 
@@ -160,9 +210,12 @@ data, not a cache of something else.
 ## Phase 11 — Hardening pass before calling v1 done
 
 - Audit every query that touches `recipes`, `recipe_ingredients`, `meal_plan_entries`,
-  `shopping_lists`, or `shopping_list_items` for an `owner_id` (or joined-through-owner) check —
-  this is larder's equivalent of `shelf`'s path-safety audit: the one property that must never
-  have an exception.
+  `shopping_lists`, `shopping_list_items`, or `shopping_list_item_sources` for an `owner_id` (or
+  joined-through-owner) check — this is larder's equivalent of `shelf`'s path-safety audit: the
+  one property that must never have an exception. `ingredients`, `ingredient_aliases`, `units`,
+  and `unit_conversions` are the **one deliberate exception** (brief section 4, global
+  instance-wide vocabulary) — confirm access to those four is appropriately unscoped, not that
+  it's missing an `owner_id` check it was never supposed to have.
 - Confirm every SQL query uses `PreparedStatement` with bound parameters.
 - Confirm the only runtime dependencies are ones that were explicitly raised and approved per
   brief section 2 — nothing snuck in silently.

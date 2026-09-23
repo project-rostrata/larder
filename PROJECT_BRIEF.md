@@ -20,6 +20,12 @@ Cookbook: select recipes into a meal plan and generate a shopping list that **co
 ingredients required by multiple recipes into one list item**, instead of listing each
 recipe's ingredients separately.
 
+**Recipe curation/discovery is explicitly out of scope.** Recipes are entered or imported one
+at a time by a human, never bulk-imported or pulled from a built-in catalog — larder is not
+trying to be a recipe-discovery app. (A paid competing app the human currently uses is more of
+a curation/discovery tool; larder is deliberately narrower — see section 4's shopping-list
+notes for the one thing that app does that's worth learning from.)
+
 ## 2. Non-negotiable constraints
 
 - **Backend language: Kotlin.** Start the same way `shelf` did: written directly against the
@@ -111,12 +117,68 @@ wants one shared collection can just use one account.
 
 **Recipe data model.** Ingredients are a proper child table (`recipe_ingredients`), not a JSON
 blob column, specifically so shopping-list generation can query/aggregate them relationally.
-Each row is `{quantity, unit, name, notes, raw_text}`: `raw_text` is the original ingredient
-line as entered or imported, always preserved and always what's shown by default in the UI;
-`quantity`/`unit`/`name`/`notes` are the parsed-out structured fields used for shopping-list
-combination, editable by hand when the parse is wrong. Instructions are a simple ordered list
-(`TEXT[]` column on `recipes` — no need for a child table there, nothing downstream needs to
-query individual steps relationally). See section 7 for the full sketch.
+`raw_text` is the original ingredient line as entered or imported, always preserved and always
+what's shown by default in the UI. `notes` is the parsed-out trailing clause (e.g. "sifted").
+`quantity` is stored as an **exact fraction** — `quantity_numerator`/`quantity_denominator`
+integers, reduced to lowest terms — not a decimal or float. This is a deliberate refinement over
+what both real OSS competitors researched for this decision actually do (see the
+ingredient/unit canonicalization note below): a fraction scales exactly (`1/3 × 3 = 1`, not
+`0.999...`) and displays the way ingredient quantities are natively written ("2 1/2 cups").
+Instructions are a simple ordered list (`TEXT[]` column on `recipes` — no need for a child
+table there, nothing downstream needs to query individual steps relationally). See section 7
+for the full sketch.
+
+**Ingredient and unit canonicalization — informed by researching Mealie, Tandoor Recipes, and
+Grocy.** Before building this, the three most relevant OSS projects in this space were
+researched specifically for how they solve (a) recognizing that two different ingredient names
+refer to the same thing (e.g. "scallion" and "green onion"), (b) unit conversion, and (c)
+shopping-list combination and recipe scaling. Findings, and what larder does with them:
+
+- **Ingredient identity has no automated solution anywhere in this space, confirmed twice
+  over.** Mealie has a canonical `IngredientFood` entity with an alias list, but a maintainer
+  confirmed alias creation is manual — there's no semantic/NLP matching. Tandoor is exact-match
+  only, with two manual recovery mechanisms: user-authored rewrite rules applied before lookup,
+  and an admin `merge_into` action that folds a duplicate into the canonical entity after the
+  fact, reassigning every row that referenced it. larder adopts the same shape as the honest,
+  achievable v1 answer: a canonical `ingredients` table, an `ingredient_aliases` table
+  (exact-match lookup only, after normalization — lowercase, trim), and a `merge-into`
+  operation matching Tandoor's pattern for fixing duplicates after the fact. A first-seen
+  ingredient name auto-creates a new canonical row rather than blocking recipe entry on
+  curation — the vocabulary is meant to improve over time, not be complete on day one.
+- **The create/import API tells the caller which ingredient references were matched to an
+  existing canonical ingredient vs. newly created during that call.** This falls out of the
+  get-or-create lookup for free — no extra persistent column needed. This is the hook a future
+  "this ingredient is unrecognized, want to link it to an existing one?" affordance on the
+  recipe entry/import view would use. The human has explicitly asked for the data model to
+  support this now, without designing that UI yet — this is that support; the UI is
+  intentionally undesigned.
+- **Units split into two layers, synthesizing what Mealie does well with what Tandoor and Grocy
+  independently confirmed.** Most units (volume: tsp/tbsp/cup/fl oz/…; mass: g/kg/oz/lb) belong
+  to a `dimension` and declare a `to_base_factor` — how many of a shared per-dimension base unit
+  (milliliters for volume, grams for mass) one of them equals. Converting between any two units
+  in the same dimension is then arithmetic, not a maintained pairwise table — this is Mealie's
+  `standard_quantity`/`standard_unit` design, which is cleaner than a hardcoded conversion
+  table. Count-style units ("clove," "can," "bunch," "pack") have no universal factor — "1
+  clove of garlic ≈ 3g" is a fact about garlic, not about the word "clove" — so a small
+  `unit_conversions` table holds these as exceptions, each row optionally scoped to a specific
+  `ingredient_id`. Tandoor (a per-food `UnitConversion` model) and Grocy (per-product "QU
+  Conversions") independently arrived at the same scoped-exception pattern, which is stronger
+  validation than either alone. Unlike Tandoor, v1 does not chain multi-hop conversions (its
+  BFS over a conversion graph, e.g. pinch→tsp→gram) — a direct lookup (same unit, same
+  dimension, or one matching `unit_conversions` row) is enough for v1 and meaningfully simpler.
+  A bare quantity with no unit word (`unit_id` is `NULL`, e.g. "3 eggs") is treated as a count
+  of the ingredient itself and needs no conversion at all to combine with another bare count of
+  the same ingredient.
+- **`ingredients`, `ingredient_aliases`, `units`, and `unit_conversions` are global,
+  instance-wide tables — not `owner_id`-scoped, unlike every other table in this app.** This is
+  a deliberate exception to the ownership rule in `AGENTS.md`, not an oversight the Phase 11
+  hardening audit should flag: a self-hosted larder instance is fundamentally a single
+  household, shared vocabulary curation compounds in value across whoever uses that instance,
+  and duplicating "flour"/"salt"/"egg" per account would be pure waste. Units are additionally
+  a small, fixed, developer-seeded vocabulary (not user-grown), so unit spelling variants
+  (`tbsp`/`tablespoon`/`tablespoons`) live as a plain `aliases TEXT[]` column directly on
+  `units` rather than a child table — `ingredient_aliases` stays a full child table because
+  that vocabulary is open-ended and grows from user curation over time.
 
 **Recipe URL import: schema.org JSON-LD, no HTML-parsing library in v1.** Fetch the page with
 `java.net.http.HttpClient` (already in the JDK — zero new dependency), extract
@@ -125,45 +187,94 @@ query individual steps relationally). See section 7 for the full sketch.
 or nested inside an `@graph` array — both are common). This covers the large majority of recipe
 sites today, since nearly every recipe SEO plugin/CMS emits schema.org JSON-LD for search-engine
 rich results. Sites with no structured data at all are out of scope for automatic import in
-v1 — the recipe can still be entered by hand. **If JSON-LD proves too lossy in practice** (e.g.
-sites that only emit the older `itemprop` microdata format, which needs a real DOM to extract
-reliably), a proper HTML parser library (e.g. `jsoup`) is the anticipated next step — flagged
-here as an expected future dependency request per section 2's policy, not pre-approved.
+v1 — the recipe can still be entered by hand. Confirmed directly against the `recipe-scrapers`
+library's source during this research pass: schema.org's `recipeIngredient` is always a list of
+raw, unparsed strings — no site or scraping library hands over structured quantity/unit/name,
+so larder's own ingredient-line parser (below) is load-bearing for every import, not just a
+fallback. **If JSON-LD proves too lossy in practice** (e.g. sites that only emit the older
+`itemprop` microdata format, which needs a real DOM to extract reliably), a proper HTML parser
+library (e.g. `jsoup`) is the anticipated next step — flagged here as an expected future
+dependency request per section 2's policy, not pre-approved.
 
 **Ingredient-line parsing is its own standalone module, built and tested before anything
-depends on it.** Neither schema.org's `recipeIngredient` (a list of free-text strings like
-`"2 1/2 cups all-purpose flour, sifted"`) nor hand-typed ingredient entry gives structured data
-for free — something has to turn a raw line into `{quantity, unit, name, notes}`. v1's approach
-is a regex-based heuristic parser: parse a leading mixed number/fraction/decimal as quantity,
-match the next token against a fixed unit vocabulary, treat a trailing comma-clause as notes,
-and take what's left as the name. This is expected to be the single hardest and most-iterated
-piece of the app, and it will get real lines wrong sometimes — `raw_text` always being preserved
-and always being what displays by default is the safety net for that, not a footnote.
+depends on it.** Neither schema.org's `recipeIngredient` nor hand-typed ingredient entry gives
+structured data for free — something has to turn a raw line into a quantity, unit, and
+ingredient. v1's approach is a regex-based heuristic parser: parse a leading mixed
+number/fraction/decimal as the quantity fraction, match the next token against the unit
+vocabulary (including its aliases) to resolve `unit_id`, treat a trailing comma-clause as
+`notes`, and resolve whatever's left as the name against `ingredients`/`ingredient_aliases`
+(exact match, auto-creating a new canonical ingredient on a miss, per the canonicalization
+note above) to get `ingredient_id`. This is expected to be the single hardest and
+most-iterated piece of the app, and it will get real lines wrong sometimes. Context from
+researching the field: the closest real prior art (a CRF model trained on ~100k lines, which
+Mealie itself ships, and its modern open-source successor `strangetom/ingredient-parser`,
+94.9% sentence-level accuracy on 81k+ training sentences) is real machine learning, not
+regex — larder's hand-rolled parser will not match that accuracy, and that's an accepted
+tradeoff, not an oversight. It's acceptable because failure degrades gracefully: `raw_text` is
+always preserved and always what displays by default, so a bad parse means an ingredient
+doesn't get auto-combined on a shopping list — never a data-loss or wrong-display failure. The
+manual-merge escape hatch below is the accepted workaround for exactly this gap.
 
-**Shopping list generation and combination — the core feature.** The user selects a set of
-recipes (directly, or via a meal-plan date range), the server gathers every parsed ingredient
-across them (a straightforward query against `recipe_ingredients`, no file reads involved), and
-combines items that share a normalized name and a compatible unit:
-- **Name matching in v1: exact, after normalization (lowercase, trim) only.** No stemming, no
-  fuzzy matching, no synonym table (`"scallion"` and `"green onion"` will *not* combine). This
-  is a known, explicit limitation — see section 5.
-- **Unit combination happens within a unit *family* only**, via a small hand-rolled conversion
-  table: volume (tsp/tbsp/cup/fl oz/pint/quart/gallon) and mass (g/kg, oz/lb) each convert
-  within themselves. **Volume-to-mass conversion is an explicit non-goal** — it depends on
-  ingredient density, which is a different, much harder problem, and v1 does not attempt it.
-  Items that can't be combined (mismatched unit families, unparsed quantity, "to taste") are
-  listed as separate line items rather than guessed at.
-- The generated list is **saved, not just computed and discarded** — items can be checked off
-  and hand-edited (add/remove/adjust) afterward, e.g. during an actual shopping trip.
+**Recipe scaling.** A recipe's `servings` (numeric) is what ingredient quantities are written
+against; a separate `servings_text` (free-text, e.g. "4–6 servings", display-only, never used
+in scaling math — a distinction Tandoor's data model already makes and larder adopts directly)
+holds whatever a recipe actually says about yield when that isn't a single clean number. Scale
+factor = desired servings ÷ `recipes.servings`, applied to each ingredient's quantity fraction
+(multiply and reduce) at render or shopping-list-generation time — the stored recipe is never
+mutated. Scaling isn't gated behind meal planning specifically; viewing a single recipe scaled
+(e.g. "×2") is the same operation. This settles what was an open question in earlier drafts of
+this brief.
+
+**Shopping list generation and combination — the core feature, confirmed to be a real gap even
+in the most mature OSS competitor researched.** Tandoor Recipes — the most feature-rich of the
+three apps researched for this decision — does not combine ingredients across recipes at all;
+it emits one shopping-list line per recipe-ingredient and only sorts them for display adjacency.
+Mealie does combine, and its logic (`can_merge`/`merge_items`) is the concrete reference
+larder's own logic is modeled on. The user selects a set of recipes (directly, or via a
+meal-plan date range, scaled by each entry's `servings_multiplier`), the server gathers every
+ingredient across them, and:
+- **Two ingredient lines combine when they resolve to the same `ingredient_id`** and either
+  share a `unit_id`, or their units are convertible (same dimension via `to_base_factor`, or a
+  matching `unit_conversions` row). As a free win beyond curated-ingredient matching: two
+  *unresolved* lines (`ingredient_id` still `NULL`) with identical normalized `raw_text` also
+  combine — a literal string match needs no curation to be safe. Lines that don't resolve to a
+  shared ingredient, or resolve but have no compatible unit path, are listed separately.
+  **Volume-to-mass conversion remains an explicit non-goal** — it depends on ingredient
+  density, a different and harder problem.
+- **Each contributing recipe's original contribution is preserved, not collapsed away**, in a
+  `shopping_list_item_sources` row per source: a snapshot of that recipe's title, the specific
+  ingredient line's `raw_text`, and its quantity/unit *as scaled by the meal plan but before
+  unit conversion* — so the combined item can show a converted total ("1 lb flour") while still
+  answering "which recipes want this, and how much did each actually call for" ("4 cups" from
+  one recipe, "3 tbsp" from another) on demand. This is a stated requirement, not a nice-to-have:
+  the combined display unit is derived, but the original per-recipe units always stay
+  available. These rows are snapshots, not live joins — a source recipe being edited or
+  deleted later must not corrupt or blank out a previously generated list.
+- **A generated list is saved, not just computed and discarded**, and supports both automatic
+  and manual editing: items can be checked off, added, or removed by hand, and — new in this
+  revision — **two or more existing items can be manually merged into one** after generation.
+  This is the explicit, accepted workaround for whatever the automatic matching misses (the
+  same tradeoff the paid competing app referenced in section 1 makes: not perfect, backed by an
+  easy manual fix). A manual merge unions the merged items' `shopping_list_item_sources` rows
+  (so "which recipes wanted this" stays correct) and sums quantities when units are compatible.
+  The exact display treatment when they aren't compatible is deliberately left open — the human
+  has asked for the data model to support this operation now without the UI being designed yet.
 
 ## 5. Open questions — need a human decision before being built
 
 - **Recipe organization/browsing.** Proposed default: freeform tags (a `TEXT[]` column) plus a
   simple listing/filter-by-tag view; full-text search deferred to v1.5, same as `shelf`
   deferred its own search feature.
-- **Recipe scaling.** Proposed default: each meal-plan entry carries a `servings_multiplier`
-  that scales ingredient quantities before shopping-list combination; the recipe row itself
-  always stores its original-serving-size quantities, never a scaled copy.
+- **Import/entry-time "is this ingredient known?" UI.** Decided that the API will expose which
+  ingredient references were matched to an existing canonical ingredient vs. newly created
+  during a create/import call (see section 4) — that decision is settled. What the recipe
+  entry/import view actually does with that information (inline indicator? a confirmation
+  step? silent?) is explicitly undesigned — deferred, not forgotten.
+- **Manual shopping-list-item merge UI.** Decided that the API supports merging two or more
+  generated shopping-list items into one (see section 4) — that decision is settled. The
+  interaction itself (multi-select? drag-together? a "combine with…" picker?) and the display
+  treatment when merged items have incompatible units are both explicitly undesigned — deferred,
+  not forgotten.
 - **Nutrition info.** Nextcloud Cookbook and schema.org's `Recipe` type both support it.
   Proposed default: deferred out of v1 entirely — not mentioned as a goal, adds scope to both
   the data model and the importer.
@@ -208,21 +319,42 @@ combines items that share a normalized name and a compatible unit:
 ```
 users(id, username, password_hash, created_at, is_admin)
 sessions(id, user_id, created_at, expires_at)
-recipes(id, owner_id, title, source_url NULL, servings NULL, prep_time_minutes NULL,
-        cook_time_minutes NULL, total_time_minutes NULL, tags TEXT[], instructions TEXT[],
-        created_at, updated_at)
-recipe_ingredients(id, recipe_id, position, quantity NUMERIC NULL, unit TEXT NULL, name TEXT,
-                    notes TEXT NULL, raw_text TEXT)
+
+-- Global, instance-wide — NOT owner_id-scoped; see section 4's canonicalization note.
+ingredients(id, name, plural_name NULL)
+ingredient_aliases(id, ingredient_id, alias)                    -- exact-match lookup only
+units(id, name, abbreviation NULL, dimension,                    -- dimension: volume | mass | count
+      to_base_factor NULL, aliases TEXT[])                       -- NULL factor for count-dimension units
+unit_conversions(id, from_unit_id, to_unit_id, factor,
+                  ingredient_id NULL)                             -- NULL = global exception, else scoped
+
+recipes(id, owner_id, title, source_url NULL, servings NUMERIC NULL, servings_text NULL,
+        prep_time_minutes NULL, cook_time_minutes NULL, total_time_minutes NULL, tags TEXT[],
+        instructions TEXT[], created_at, updated_at)
+recipe_ingredients(id, recipe_id, position, raw_text, notes NULL,
+                    quantity_numerator NULL, quantity_denominator NULL,
+                    unit_id NULL, ingredient_id NULL)
+
 meal_plan_entries(id, owner_id, plan_date, meal_slot, recipe_id, servings_multiplier,
                    created_at)
+
 shopping_lists(id, owner_id, name, created_at)
-shopping_list_items(id, shopping_list_id, name, quantity NULL, unit NULL, raw_text,
-                     checked, source_recipe_ids INTEGER[], sort_order)
+shopping_list_items(id, shopping_list_id, ingredient_id NULL, raw_text,
+                     quantity_numerator NULL, quantity_denominator NULL, unit_id NULL,
+                     checked, sort_order)
+-- One row per recipe that contributed to a shopping_list_item — see section 4. Snapshotted
+-- (recipe_title, raw_text, quantity, unit as that recipe actually called for it), not a live
+-- join, so a generated list survives its source recipes later being edited or deleted.
+shopping_list_item_sources(id, shopping_list_item_id, recipe_id NULL, recipe_title,
+                            meal_plan_entry_id NULL, raw_text,
+                            quantity_numerator NULL, quantity_denominator NULL, unit_id NULL)
 ```
 
 Every table here is a real, authoritative table — none of it is a cache of anything else. This
 is the main structural difference from `shelf`'s data model, where `file_index` was explicitly
-*not* authoritative over the filesystem.
+*not* authoritative over the filesystem. `ingredients`/`ingredient_aliases`/`units`/
+`unit_conversions` are the one deliberate exception to `owner_id` scoping in the whole schema —
+see section 4.
 
 ## 8. Docker and storage notes
 
@@ -244,6 +376,13 @@ Much simpler than `shelf`'s, because there's no user-facing filesystem content t
 - Section 4's storage-model decision (Postgres, not files) is settled — don't reintroduce
   file-backed recipe storage or `shelf`'s reconciliation/path-safety patterns without flagging
   it to the human first, the same way any other section-4 decision would be treated.
+- Section 4's ingredient/unit canonicalization model (curated aliases, no automatic semantic
+  matching, the two-layer unit-conversion design, quantities as exact fractions, and
+  `ingredients`/`ingredient_aliases`/`units`/`unit_conversions` being global rather than
+  `owner_id`-scoped) is settled and was arrived at by directly researching Mealie, Tandoor
+  Recipes, and Grocy — see `docs/decisions.md` for the full findings. Don't propose a fuzzy/ML
+  ingredient-matching scheme or re-scope those four tables to `owner_id` without flagging it
+  first; both were considered and deliberately rejected/scoped this way.
 - Section 5 items need a human decision before being built — surface the question rather than
   guessing, same as `shelf`'s brief asked.
 - Everything else here is a working default, not gospel — reasonable refinements are expected

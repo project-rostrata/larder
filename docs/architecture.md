@@ -8,7 +8,7 @@ changes.
 
 ## Status
 
-**Phases 0–4 are done.** Repo scaffold and planning docs; a backend skeleton (hand-rolled
+**Phases 0–5 are done.** Repo scaffold and planning docs; a backend skeleton (hand-rolled
 router, sealed `ApiResult`/JSON error-envelope pattern, pooled JDBC connection, `GET
 /api/health`, `GET /api/version`); the full v1 database schema (`users`, `sessions`, the global
 `ingredients`/`ingredient_aliases`/`units`/`unit_conversions` vocabulary seeded with 21 starter
@@ -18,11 +18,12 @@ migration runner ported from `shelf`'s); auth — PBKDF2 password hashing, cooki
 `POST /api/register`/`login`/`logout`, `GET /api/me` behind `requireAuth`, username + password
 only, no email column at all (unlike `shelf`, which collects and later dropped it — larder
 never had it to begin with, per the human's explicit direction); a standalone ingredient-parser
-sidecar (`ingredient-parser/` — Python, wraps `strangetom/ingredient-parser`); and the Kotlin
-side that calls it — `larder.ingredients.IngredientLineParser`/`SidecarIngredientLineParser`,
-`larder.ingredients.IngredientResolver`, and the `IngredientRepository`/`UnitRepository` it
-resolves against. **Nothing calls any of this yet** — there's no recipe-creation endpoint for
-it to be wired into (Phase 5/6).
+sidecar (`ingredient-parser/` — Python, wraps `strangetom/ingredient-parser`); the Kotlin side
+that calls it (`larder.ingredients.IngredientLineParser`/`SidecarIngredientLineParser`,
+`IngredientResolver`, `IngredientRepository`/`UnitRepository`); and now real recipe CRUD —
+`GET/POST /api/recipes`, `GET/PUT/DELETE /api/recipes/{id}`,
+`POST /api/ingredients/{id}/merge-into/{targetId}` — the first endpoints that actually call the
+ingredient-parsing pipeline built in Phase 4.
 
 **`backend/test/TestMain.kt` and `backend/test.sh` exist for the first time as of Phase 4b** —
 `AGENTS.md`'s testing section anticipated "Phase 1 or Phase 4" as the trigger; Phase 4a turned
@@ -55,6 +56,16 @@ resolved end-to-end into real rows, resolving the same new ingredient twice conf
 idempotent (same id, correct `ingredientWasNewlyCreated` both times), alias-based unit
 resolution confirmed (`"cups"` → the seeded `cup` unit), and graceful degradation against an
 unreachable sidecar confirmed (logs a warning, returns an all-null result, never throws).
+Phase 5 was verified the same way, through the real HTTP API end to end: created a recipe with
+real ingredient lines (including the parenthetical-package-size and bare-count cases) and
+confirmed each resolved correctly; confirmed listing/tag-filtering, `PUT` fully replacing
+`recipe_ingredients` rather than patching it, and soft-delete's full contract (excluded from
+listing, still resolves by direct fetch, a second delete or an update on it both 404); confirmed
+cross-user ownership isolation (a second user sees zero of the first user's recipes and gets 404
+— not 403 — trying to read, update, or delete one); confirmed `merge-into` reassigns a real
+`recipe_ingredients` row, rejects self-merge, and 404s on an already-merged-away id; and
+confirmed the resilience case that matters most: stopping the sidecar mid-session and creating a
+recipe anyway still succeeds, with that ingredient line falling back to raw-text-only.
 
 ## System shape
 
@@ -69,10 +80,10 @@ App server (Kotlin, JDK stdlib HTTP, REST/JSON API)
    for everything)
 ```
 
-Full rationale in `PROJECT_BRIEF.md` §3–4. The Kotlin code that calls the sidecar
-(`SidecarIngredientLineParser`) exists and is verified — this arrow is real — but nothing in
-the app constructs or uses it yet, since there's no recipe-creation endpoint calling into it
-(Phase 5/6). `docker-compose.yml` doesn't run the two services together yet either (Phase 10).
+Full rationale in `PROJECT_BRIEF.md` §3–4. Both arrows are real now — recipe creation/update
+calls the sidecar, confirmed live. `docker-compose.yml` doesn't run the two services together
+as one deployment yet, though (Phase 10) — Phase 5's verification pointed the app at the
+sidecar's host-mapped port directly, not through a Compose network.
 
 ## Repo layout
 
@@ -89,9 +100,10 @@ larder/
         AuthConfig.kt             session duration + secure-cookies flag, passed into handlers
       api/
         Router.kt              hand-rolled router: method+path matching, :param segments,
-                                 .get/.post/.delete (JSON only — no streaming/static-file
+                                 .get/.post/.put/.delete (JSON only — no streaming/static-file
                                  serving yet, unlike shelf's Router; added when Phase 9
-                                 actually needs it)
+                                 actually needs it). put() added Phase 5 — PUT /api/recipes/{id}
+                                 was the first route that needed it
         ApiResult.kt            sealed Ok/Err result type + the fixed JSON error envelope
         Cookies.kt                parse Cookie header / build Set-Cookie (larder_session)
         Auth.kt                    requireAuth() middleware — resolves the full
@@ -106,10 +118,29 @@ larder/
         LogoutHandler.kt           POST /api/logout — idempotent, reads the cookie directly
                                     rather than through requireAuth
         MeHandler.kt                GET /api/me (behind requireAuth)
+        RecipeRequest.kt         request DTOs, shared by create and update
+        RecipeResponse.kt         response DTOs + RecipeRow.toResponse()/
+                                    PersistedRecipe.toWriteResponse() mappers — Read and Write
+                                    response shapes are deliberately separate types (see
+                                    docs/decisions.md)
+        RecipeValidation.kt        validateRecipeRequest(), shared by create and update
+        RecipeIngredientResolution.kt  resolveIngredientLines() — the parser+resolver call per
+                                         raw line, shared by create and update, order-preserving
+        RecipesListHandler.kt      GET /api/recipes?tag=... — excludes soft-deleted
+        RecipeGetHandler.kt         GET /api/recipes/{id} — does NOT exclude soft-deleted
+        RecipeCreateHandler.kt        POST /api/recipes
+        RecipeUpdateHandler.kt         PUT /api/recipes/{id} — full replace, not a patch; 404
+                                         on a deleted/missing/not-owned recipe, all identical
+        RecipeDeleteHandler.kt           DELETE /api/recipes/{id} — soft delete; already-deleted
+                                           is 404, not idempotent-200
+        IngredientMergeHandler.kt          POST /api/ingredients/{id}/merge-into/{targetId} — no
+                                             ownership check, ingredients are global
       db/
         ConnectionPool.kt       fixed-size pool of JDBC connections, opened once at startup
         Database.kt              queryOne/queryOneOrNull/queryList/update, all
-                                  PreparedStatement-bound — see AGENTS.md's SQL-injection rule
+                                  PreparedStatement-bound — see AGENTS.md's SQL-injection rule.
+                                  transaction()/Transaction added Phase 5 — the first thing
+                                  needing more than one statement to commit atomically
         MigrationRunner.kt       hand-rolled migration runner, ported from shelf's — discovers
                                   NNN_*.sql files, tracks applied versions in
                                   schema_migrations, runs pending ones in a transaction each
@@ -118,9 +149,15 @@ larder/
         SessionRow.kt / SessionRepository.kt  ported from shelf's, unchanged shape
         IngredientRow.kt / IngredientRepository.kt  global, not owner_id-scoped; exact match on
                                                       name or ingredient_aliases; auto-creates
-                                                      and reports whether this call created it
+                                                      and reports whether this call created it;
+                                                      mergeInto() added Phase 5
         UnitRow.kt / UnitRepository.kt         global; match on name/abbreviation/aliases; no
                                                  create — units are seeded, not user-grown
+        RecipeRow.kt / RecipeIngredientRow.kt / RecipeRepository.kt  owner_id-scoped;
+                                                                       create/update both run in
+                                                                       one Transaction; findById
+                                                                       does not filter
+                                                                       deleted_at, list() does
       ingredients/
         IngredientLineParser.kt   the interface + ParsedIngredientLine (raw split, not yet
                                     resolved against larder's own tables)
@@ -191,6 +228,7 @@ Read from environment variables at startup (`Main.kt`), no config file:
 | `LARDER_MIGRATIONS_DIR` | yes | — (`run.sh` defaults it to `../db/migrations` for local dev) |
 | `LARDER_SESSION_DURATION_HOURS` | no | `720` (30 days) |
 | `LARDER_SECURE_COOKIES` | no | `false` (real deployments must override to `true`; local HTTP dev needs it off) |
+| `LARDER_INGREDIENT_PARSER_URL` | yes | — (`run.sh` defaults it to `http://localhost:8000` for local dev; Compose will point it at the sidecar's service name instead, Phase 10) |
 
 `ingredient-parser/` has its own separate, small config surface — see its own README.md
 (currently just `INGREDIENT_PARSER_PORT`, default `8000`). Not part of the table above; it's a
@@ -198,7 +236,6 @@ different process with its own env-var namespace.
 
 ## Not built yet
 
-Everything past Phase 4: recipe CRUD (the first thing to actually call
-`IngredientLineParser`/`IngredientResolver`), URL import, meal planning, shopping-list
-generation, the frontend, and Docker packaging (including wiring `ingredient-parser` into
-`docker-compose.yml`). See `V1_PLAN.md` for the phase order.
+Everything past Phase 5: URL import, meal planning, shopping-list generation, the frontend, and
+Docker packaging (including wiring `ingredient-parser` into `docker-compose.yml`). See
+`V1_PLAN.md` for the phase order.

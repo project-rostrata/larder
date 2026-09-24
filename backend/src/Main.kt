@@ -1,7 +1,13 @@
 import com.sun.net.httpserver.HttpServer
+import larder.api.IngredientMergeHandler
 import larder.api.LoginHandler
 import larder.api.LogoutHandler
 import larder.api.MeHandler
+import larder.api.RecipeCreateHandler
+import larder.api.RecipeDeleteHandler
+import larder.api.RecipeGetHandler
+import larder.api.RecipeUpdateHandler
+import larder.api.RecipesListHandler
 import larder.api.RegisterHandler
 import larder.api.Router
 import larder.api.VersionHandler
@@ -10,9 +16,14 @@ import larder.api.requireAuth
 import larder.auth.AuthConfig
 import larder.db.ConnectionPool
 import larder.db.Database
+import larder.db.IngredientRepository
 import larder.db.MigrationRunner
+import larder.db.RecipeRepository
 import larder.db.SessionRepository
+import larder.db.UnitRepository
 import larder.db.UserRepository
+import larder.ingredients.IngredientResolver
+import larder.ingredients.SidecarIngredientLineParser
 import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.util.concurrent.Executors
@@ -28,6 +39,8 @@ fun main() {
     val dbUser = System.getenv("LARDER_DB_USER") ?: error("LARDER_DB_USER is required")
     val dbPassword = System.getenv("LARDER_DB_PASSWORD") ?: error("LARDER_DB_PASSWORD is required")
     val migrationsDir = System.getenv("LARDER_MIGRATIONS_DIR") ?: error("LARDER_MIGRATIONS_DIR is required")
+    val ingredientParserUrl = System.getenv("LARDER_INGREDIENT_PARSER_URL")
+        ?: error("LARDER_INGREDIENT_PARSER_URL is required")
     // Default comfortably covers the HTTP server's 8-thread executor below, with headroom —
     // same rationale as shelf's identical default.
     val dbPoolSize = (System.getenv("LARDER_DB_POOL_SIZE") ?: "10").toInt()
@@ -43,12 +56,23 @@ fun main() {
     val authConfig = AuthConfig(sessionDurationHours, secureCookies)
     val users = UserRepository(database)
     val sessions = SessionRepository(database)
+    val recipes = RecipeRepository(database)
+    val ingredients = IngredientRepository(database)
+    val units = UnitRepository(database)
+    val ingredientParser = SidecarIngredientLineParser(ingredientParserUrl)
+    val ingredientResolver = IngredientResolver(units, ingredients)
 
     val versionHandler = VersionHandler(database)
     val registerHandler = RegisterHandler(users, sessions, authConfig)
     val loginHandler = LoginHandler(users, sessions, authConfig)
     val logoutHandler = LogoutHandler(sessions, authConfig.secureCookies)
     val meHandler = MeHandler()
+    val recipesListHandler = RecipesListHandler(recipes)
+    val recipeGetHandler = RecipeGetHandler(recipes)
+    val recipeCreateHandler = RecipeCreateHandler(recipes, ingredientParser, ingredientResolver)
+    val recipeUpdateHandler = RecipeUpdateHandler(recipes, ingredientParser, ingredientResolver)
+    val recipeDeleteHandler = RecipeDeleteHandler(recipes)
+    val ingredientMergeHandler = IngredientMergeHandler(ingredients)
 
     val router = Router()
     router.get("/api/health", ::healthHandler)
@@ -57,6 +81,15 @@ fun main() {
     router.post("/api/login", loginHandler::handle)
     router.post("/api/logout", logoutHandler::handle)
     router.get("/api/me", requireAuth(sessions, users, meHandler::handle))
+    router.get("/api/recipes", requireAuth(sessions, users, recipesListHandler::handle))
+    router.get("/api/recipes/:id", requireAuth(sessions, users, recipeGetHandler::handle))
+    router.post("/api/recipes", requireAuth(sessions, users, recipeCreateHandler::handle))
+    router.put("/api/recipes/:id", requireAuth(sessions, users, recipeUpdateHandler::handle))
+    router.delete("/api/recipes/:id", requireAuth(sessions, users, recipeDeleteHandler::handle))
+    router.post(
+        "/api/ingredients/:id/merge-into/:targetId",
+        requireAuth(sessions, users, ingredientMergeHandler::handle),
+    )
 
     val server = HttpServer.create(InetSocketAddress(port), 0)
     server.executor = Executors.newFixedThreadPool(8)

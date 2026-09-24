@@ -11,9 +11,11 @@ KOTLIN_HOME="${KOTLIN_HOME:-/opt/kotlinc}"
 
 CP="$OUT_DIR:$LIB_DIR/postgresql-42.7.13.jar:$LIB_DIR/kotlinx-serialization-core-jvm-1.11.0.jar:$LIB_DIR/kotlinx-serialization-json-jvm-1.11.0.jar:$KOTLIN_HOME/lib/kotlin-stdlib.jar"
 
-# Local-dev default, relative to this script's cwd (backend/); the Docker image sets this explicitly instead.
+# Local-dev defaults; the Docker Compose deployment sets these explicitly instead (the sidecar
+# reachable by service name, not localhost, once Phase 10 wires it in).
 : "${LARDER_MIGRATIONS_DIR:=../db/migrations}"
-export LARDER_MIGRATIONS_DIR
+: "${LARDER_INGREDIENT_PARSER_URL:=http://localhost:8000}"
+export LARDER_MIGRATIONS_DIR LARDER_INGREDIENT_PARSER_URL
 
 java \
   -cp "$CP" \

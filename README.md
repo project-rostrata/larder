@@ -41,12 +41,12 @@ are built the way they are, not just what was built.
 Not planned for v1, deliberately: images, recipe search, sharing, nutrition info — see
 [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) §5–6 for what's deferred and why.
 
-**Status: early build.** Phases 0–4 of [`V1_PLAN.md`](V1_PLAN.md) are done — a backend skeleton,
+**Status: early build.** Phases 0–5 of [`V1_PLAN.md`](V1_PLAN.md) are done — a backend skeleton,
 the full database schema, auth (register/login/logout), a standalone Python ingredient-parser
-sidecar (see [`ingredient-parser/README.md`](ingredient-parser/README.md)), and the Kotlin code
-that calls it. Nothing in the app actually creates a recipe yet, so none of this is wired into
-an HTTP endpoint — that's the next phase. See
-[`docs/architecture.md`](docs/architecture.md) for what's actually built right now.
+sidecar (see [`ingredient-parser/README.md`](ingredient-parser/README.md)), and real recipe
+CRUD with ingredient-line parsing wired all the way through. No meal planning or shopping lists
+yet, and no frontend — see [`docs/architecture.md`](docs/architecture.md) for what's actually
+built right now.
 
 ## Quick start
 
@@ -64,11 +64,14 @@ LARDER_DB_PASSWORD=... \
 ```
 
 Port 8080 by default. Routes so far: `GET /api/health`, `GET /api/version`,
-`POST /api/register`, `POST /api/login`, `POST /api/logout`, `GET /api/me`.
+`POST /api/register`, `POST /api/login`, `POST /api/logout`, `GET /api/me`,
+`GET /api/recipes`, `GET/POST/PUT/DELETE /api/recipes/{id}` (POST for create is on the
+collection route, not `{id}`), `POST /api/ingredients/{id}/merge-into/{targetId}`.
 
-The ingredient-parser sidecar is separate and runs independently — see
-[`ingredient-parser/README.md`](ingredient-parser/README.md); nothing in the Kotlin backend
-calls it yet (that's Phase 4b).
+Also needs `LARDER_INGREDIENT_PARSER_URL` pointing at a running
+[`ingredient-parser`](ingredient-parser/README.md) instance (defaults to
+`http://localhost:8000` via `run.sh`) — recipe create/update calls it to parse ingredient
+lines, though it degrades gracefully to raw-text-only ingredients if that's unreachable.
 
 ## Documentation
 

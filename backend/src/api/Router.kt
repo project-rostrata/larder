@@ -42,7 +42,7 @@ fun parseQuery(raw: String?): Map<String, String> {
 private fun splitPath(path: String): List<String> = path.trim('/').split('/').filter { it.isNotEmpty() }
 
 // Hand-rolled router on com.sun.net.httpserver.HttpServer, ported from shelf's Router.kt — see
-// PROJECT_BRIEF.md §2 and V1_PLAN.md Phase 1. JSON-only for now (get/post/delete): unlike
+// PROJECT_BRIEF.md §2 and V1_PLAN.md Phase 1. JSON-only for now (get/post/put/delete): unlike
 // shelf, larder has no binary/streaming responses planned until static frontend serving lands
 // in Phase 9 — that capability gets added then, not speculatively now.
 class Router {
@@ -55,6 +55,10 @@ class Router {
 
     fun post(pattern: String, handler: Handler) {
         routes += Route("POST", parsePattern(pattern), handler)
+    }
+
+    fun put(pattern: String, handler: Handler) {
+        routes += Route("PUT", parsePattern(pattern), handler)
     }
 
     fun delete(pattern: String, handler: Handler) {

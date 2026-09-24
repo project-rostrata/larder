@@ -173,31 +173,44 @@ this plan. Lives in `ingredient-parser/` (its own README covers the service in f
   graceful degradation against an unreachable sidecar.
 - `docker-compose.yml` wiring for the sidecar service is still Phase 10's concern.
 
-## Phase 5 — Recipe CRUD
+## Phase 5 — Recipe CRUD — done
 
 All straightforward reads/writes against Phase 2's tables, scoped by `owner_id` on every query
 — no reconciliation, no lazy rescan, no background scan job, because Postgres is simply the
 data, not a cache of something else.
 
-- `GET /api/recipes?tag=...` — listing, filtered by tag.
-- `GET /api/recipes/{id}` — a single recipe with its ingredients.
+- `GET /api/recipes?tag=...` — listing, filtered by tag. Excludes soft-deleted recipes.
+- `GET /api/recipes/{id}` — a single recipe with its ingredients. Unlike listing, does **not**
+  exclude soft-deleted recipes — see the `DELETE` bullet below.
 - `POST /api/recipes`, `PUT /api/recipes/{id}` — create/edit, writing `recipes` +
-  `recipe_ingredients` rows in one transaction. Manually-entered ingredient lines go through
-  Phase 4b's parser too, same as imported ones. The response includes, per ingredient line,
+  `recipe_ingredients` rows in one transaction (`Database.transaction`/`Transaction`, added this
+  phase — nothing before this needed a multi-statement commit). `PUT` fully replaces
+  `recipe_ingredients` (delete + re-insert), it's not a patch. Manually-entered ingredient lines
+  go through Phase 4b's parser too, same as imported ones will in Phase 6 — confirmed live,
+  including that an unreachable sidecar degrades the whole create/update to raw-text-only
+  ingredients rather than failing the request. The response includes, per ingredient line,
   whether its `ingredient_id` was newly created or matched an existing row (Phase 4b's note) —
-  undisplayed by any UI yet, but present in the API from this phase on.
+  a separate response shape from `GET`'s (`RecipeWriteResponse` vs `RecipeResponse`) since the
+  flag is a fact about *this write*, not a durable property worth reporting on every later read.
+  Undisplayed by any UI yet, but present in the API from this phase on.
 - `DELETE /api/recipes/{id}` — **soft delete** (brief section 4): sets `deleted_at`, does not
-  remove the row or its `recipe_ingredients`. `PUT` on an already-deleted recipe returns 404.
-  `GET /api/recipes?tag=...` (listing) filters `WHERE deleted_at IS NULL`; `GET
-  /api/recipes/{id}` (direct fetch) does not — a historical `meal_plan_entries` row still needs
-  to resolve the recipe it references after that recipe's been deleted.
+  remove the row or its `recipe_ingredients`. Deleting an already-deleted recipe, updating one,
+  or either operation from a non-owner, all return the identical 404 — never a distinct signal
+  that reveals a row exists but isn't the caller's. `GET /api/recipes?tag=...` (listing) filters
+  `WHERE deleted_at IS NULL`; `GET /api/recipes/{id}` (direct fetch) does not — a historical
+  `meal_plan_entries` row still needs to resolve the recipe it references after that recipe's
+  been deleted.
 - `POST /api/ingredients/{id}/merge-into/{targetId}` — folds a duplicate canonical ingredient
   into another: reassign every `recipe_ingredients`/`shopping_list_items` row referencing `{id}`
   to `{targetId}`, move any aliases over, **reassign `unit_conversions.ingredient_id` rows too**
   (dropping one as a duplicate if `{targetId}` already has a conversion for the same unit pair —
-  don't error), then delete `{id}`. Mirrors Tandoor's `merge_into` pattern (brief section 4) —
-  the recovery path for an auto-created ingredient that turns out to duplicate one that already
-  existed.
+  don't error), then delete `{id}`. One transaction. Mirrors Tandoor's `merge_into` pattern
+  (brief section 4) — the recovery path for an auto-created ingredient that turns out to
+  duplicate one that already existed. No ownership check on `{id}`/`{targetId}` themselves —
+  `ingredients` is global, not `owner_id`-scoped, so any authenticated user can merge any two;
+  self-merge is rejected (400), a nonexistent or already-merged-away id is 404.
+- **`Router.kt` gained a `put()` method this phase** — it only had get/post/delete before;
+  `PUT /api/recipes/{id}` is the first route that needed it.
 
 ## Phase 6 — Recipe URL import
 

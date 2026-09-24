@@ -319,3 +319,43 @@ captured sidecar responses, not synthetic ones. `IngredientRepository`/`UnitRepo
 `IngredientResolver` genuinely need a live Postgres and were instead verified with a temporary,
 not-committed Kotlin entry point run against real containers — same tier of verification every
 other phase has gotten, just not embedded in the checked-in suite.
+
+## Phase 5 implementation notes
+
+Four things worth recording, none of them re-litigating anything settled earlier — all either
+filled a gap the earlier phases' text left implicit, or are ordinary implementation-level calls
+made and documented as they came up:
+
+- **Wrong-owner access to a single resource by id returns 404, not 403.** `AGENTS.md`'s
+  ownership rule says every query must filter by `owner_id`, which is exactly what
+  `GET/PUT/DELETE /api/recipes/{id}` do (`WHERE id = ? AND owner_id = ?`) — a row belonging to
+  someone else simply doesn't match the query, indistinguishable at the SQL level from not
+  existing at all. This collapses "not yours" and "doesn't exist" into the same 404, which is
+  also the safer convention (never let an unauthorized caller learn a resource exists at all).
+  **403 is reserved for a different case**, already anticipated in the Phase 2 entry above:
+  a client-supplied id that references a *different* owner-scoped row (e.g. a future
+  `recipe_id` inside a Phase 7 meal-plan-entry request) — there the FK doesn't naturally
+  produce a 404, so an explicit ownership check has to run and 403 on failure. Both are correct;
+  they're answering different questions.
+- **`Database` gained transaction support** (`Database.transaction { tx -> ... }`, and a
+  `Transaction` class offering the same query/update shape as `Database` itself but bound to
+  one already-open connection). Nothing before Phase 5 needed more than one statement to commit
+  atomically; a recipe plus its `recipe_ingredients` rows do. Refactored `Database`'s existing
+  four methods to delegate to shared private connection-level functions rather than duplicate
+  their bodies in `Transaction` — worth the small touch to Phase-1 code to avoid that.
+- **Recipe writes and ingredient resolution are deliberately NOT in the same transaction.**
+  Resolving an ingredient line can auto-create a new canonical `ingredients` row
+  (`IngredientRepository.findOrCreate`) before the recipe's own insert/update transaction even
+  opens. If that later transaction then fails and rolls back, any newly-auto-created ingredient
+  from it stays committed anyway. This is fine, not a bug: `ingredients` is a global vocabulary
+  table with no expectation that every row is referenced by some recipe — an unreferenced
+  canonical ingredient sitting there is exactly as harmless as one sitting unused right after
+  the seed migration runs. Keeping ingredient resolution outside the recipe transaction avoids
+  giving `IngredientRepository`/`UnitRepository` a second, transaction-scoped code path for no
+  real benefit.
+- **`servings` is a plain `Double` in the API, not an exact-fraction pair like ingredient
+  quantities.** The fraction treatment exists because ingredient quantities need exact scaling
+  arithmetic and natural fraction display (`PROJECT_BRIEF.md` section 4). Servings counts are
+  always simple, short values in practice (4, 6, 2.5) that `Double` represents exactly regardless
+  — float imprecision only bites on repeating binary fractions like 1/3, which servings numbers
+  don't produce. Applying the fraction treatment here anyway would be process, not precision.

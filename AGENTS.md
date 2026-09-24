@@ -113,12 +113,16 @@ top-level `test<Something>()` functions in `.kt` files under `backend/test/` (pa
 `backend/src/`, never nested inside it). `backend/test.sh` compiles both and runs it, same as
 `shelf`'s script.
 
-**Phase 4's ingredient-line parser needs unusually thorough tests** — pull real ingredient
-lines from a handful of real recipe sites as test cases, not just synthetic ones, since this
-module's real-world accuracy is the thing the shopping-list feature actually depends on. If the
-hand-rolled runner starts straining under a large, data-driven test set (many parser cases
-sharing one assertion shape), that's a reasonable, specific trigger to raise adding a real test
-framework — per the dependency policy below, propose it rather than just adding it.
+**Ingredient-line parsing needs unusually thorough tests, on both sides of Phase 4's split.**
+Phase 4a's sidecar (`ingredient-parser/`, Python/pytest, not this hand-rolled Kotlin runner —
+already built, real ingredient-line test cases, not synthetic ones) covers the parsing itself.
+Phase 4b's Kotlin-side resolution logic (mapping the sidecar's output onto
+`units`/`ingredients`, collapsing its possibly-multiple `amount` entries into one
+`recipe_ingredients` row) needs its own real-world test cases here, for the same reason: this
+module's real-world accuracy is what the shopping-list feature actually depends on. If the
+hand-rolled Kotlin runner starts straining under a large, data-driven test set for that,
+that's a reasonable, specific trigger to raise adding a real test framework — per the
+dependency policy below, propose it rather than just adding it.
 
 ## Dependency and build-tool policy — looser than `shelf`'s, same discipline
 
@@ -145,3 +149,17 @@ fetch them with a checksum-verified script instead.
 applies as much as practical — keep the build file readable and avoid plugin sprawl — but the
 hard "no Gradle at all" line from `shelf` is not a larder constraint. Record the move itself in
 `docs/decisions.md` when it happens, with the specific reason.
+
+**A new runtime/service is a bigger category of change than a jar or a Gradle move, and this
+policy's examples above didn't originally contemplate it — the `ingredient-parser/` Python
+sidecar (`PROJECT_BRIEF.md` §4) is the concrete precedent now.** Everything above this point
+assumes "still one JVM process" (a jar on the classpath, or a build tool driving that same
+compile). A second runtime — a separate container with its own language, its own dependency
+tree, its own failure modes, reachable over the network instead of a function call — is a
+qualitatively different kind of addition: more to audit, a new network hop on whatever calls
+it, a new image to build and keep patched. It needs the same propose-first discipline as
+everything else in this section (the specific need, not just "this would be nice"), but expect
+the bar for "does the need justify it" to be higher, precisely because the cost is higher.
+Wire it into `docker-compose.yml` on an internal-only network (no host port unless something
+outside the deployment genuinely needs to reach it directly), same as `ingredient-parser`'s own
+service is scoped.

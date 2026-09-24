@@ -8,8 +8,11 @@ runnable state — no phase depends on later phases to compile.
 
 Dependency policy (brief section 2): start on bare `kotlinc` with zero non-`kotlinx`
 dependencies, same as `shelf`. Unlike `shelf`, moving to Gradle or adding a dependency beyond
-`kotlinx.*`/the Postgres driver is expected to come up (most likely in Phase 6, recipe import)
-— when it does, propose the specific need before adding it, don't add it by default.
+`kotlinx.*`/the Postgres driver is expected to come up — the Kotlin side is still on exactly
+those three jars, but Phase 4a already added something bigger than a jar: a second
+runtime/service (the `ingredient-parser/` Python sidecar), the concrete case
+`AGENTS.md`'s dependency policy now names explicitly. Propose the specific need before adding
+anything else, don't add it by default.
 
 **No path-safety or filesystem-reconciliation phase.** Earlier drafts of this plan (mirroring
 `shelf`'s Phase 4/5) included one — that was dropped when the storage-model decision changed
@@ -94,29 +97,61 @@ early, on bare `kotlinc`, before anything else copies it.
 
 ## Phase 4 — Ingredient-line parser
 
-Build and unit-test this standalone, before Phase 5 or Phase 6 depend on it — this is larder's
-equivalent of `shelf`'s Phase 4 (path safety) in risk profile, even though the subject matter
-is completely different.
+Originally planned as a single Kotlin phase (a hand-rolled regex parser). Reversed after
+research (`docs/decisions.md`) found that running the real `strangetom/ingredient-parser`
+Python package as a sidecar clears the bar a hand-rolled parser or a Kotlin port never would —
+see brief section 4. Split into two stages; **no other phase's number changes** (matches
+`shelf`'s own precedent of annotating scope changes in place rather than renumbering a document
+other files already cross-reference by number).
 
-- Input a raw string (`"2 1/2 cups all-purpose flour, sifted"`), output a quantity fraction
-  (`quantity_numerator`/`quantity_denominator`), a resolved `unit_id` (matched against
-  `units.name`/`abbreviation`/`aliases`), a resolved `ingredient_id` (matched against
-  `ingredients`/`ingredient_aliases`, exact match after normalization — auto-creating a new
-  canonical `ingredients` row on a miss, per brief section 4), `notes` (trailing comma-clause),
-  and always `raw_text`. Cover mixed numbers, simple fractions, and decimals for the quantity
-  (a decimal input still converts to an exact reduced fraction — e.g. `2.5` → `5/2`). Unparsed
-  lines fall back to null quantity/unit/ingredient with just `raw_text` — never throw on a line
-  that doesn't fit the pattern.
+### Phase 4a — Ingredient-parser sidecar (Python) — done
+
+Built, tested, and verified standalone — no dependency on Postgres, auth, or anything else in
+this plan. Lives in `ingredient-parser/` (its own README covers the service in full); summary:
+
+- Wraps `strangetom/ingredient-parser`'s `parse_ingredient()` in a small HTTP service —
+  `POST /parse` (`{"text": "..."}` in, the library's full structured output as JSON out —
+  quantities as `{"numerator", "denominator"}`, never a float) and `GET /health`. Python
+  stdlib `http.server`, no Flask — consistent with the Kotlin side's own no-framework
+  discipline.
+- Model, NLTK tagger data, and embeddings load once at process start, not per request —
+  confirmed via measurement to keep per-request latency to single-digit milliseconds once warm.
+- NLTK's tagger data is fetched at Docker *build* time, explicitly to a fixed path (not left to
+  `nltk.download()`'s own default, which ignores the `NLTK_DATA` env var for where it *writes*,
+  confirmed by testing) — the running container needs zero internet access, verified directly
+  with `docker run --network none`.
+- Tests run real HTTP requests against a real running instance (not just calling the library
+  function directly), covering the specific failure modes that motivated this approach over
+  regex: size-word separation (`"2 large eggs"` → name `"eggs"`, not `"large eggs"`),
+  parenthetical/multiplier package sizes, multiple trailing clauses, quantity appearing after
+  the ingredient name.
+- **Not done yet, deliberately out of scope for this stage**: nothing in the Kotlin backend or
+  `docker-compose.yml` calls this service. See Phase 4b.
+
+### Phase 4b — Kotlin integration — not yet started
+
+- An `IngredientLineParser` interface (or similar seam) that Phase 5/6 call through, so the
+  implementation underneath — this HTTP call today, conceivably something else later — is
+  swappable without touching their code.
+- `java.net.http.HttpClient` (already in the JDK, zero new Kotlin dependency) calling the
+  sidecar's `POST /parse` over the internal Docker network; a short timeout; on any failure or
+  timeout, fall back to `raw_text`-only (null quantity/unit/ingredient) — the same graceful
+  degradation the original regex-parser plan already called for.
+- Map the sidecar's response onto larder's schema: resolve its `unit` string against
+  `units.name`/`abbreviation`/`aliases`, resolve its ingredient `name` against
+  `ingredients`/`ingredient_aliases` (exact match after normalization, auto-creating a new
+  canonical row on a miss, per brief section 4), convert its `{"numerator", "denominator"}`
+  straight into `quantity_numerator`/`quantity_denominator`. The sidecar can return *multiple*
+  `amount` entries for one line (e.g. `"1 (14.5 oz) can diced tomatoes"` → both "1 can" and
+  "14.5 oz") — deciding how that collapses into larder's single quantity/unit pair per
+  `recipe_ingredients` row is real design work for this stage, not a detail to gloss over.
 - The create/import call this feeds into (Phase 5/6) must be able to report, per ingredient
   line, whether its `ingredient_id` was matched to a pre-existing row or created new during that
   call — this falls out of the get-or-create lookup itself, no extra state needed. Don't lose
-  this signal on the way out of the parser/lookup step; it's the hook brief section 5's deferred
-  "is this ingredient known?" UI will eventually use.
-- Write real test cases from real recipe sites' ingredient lists, not just synthetic examples —
-  this module's quality is what makes or breaks the shopping-list feature. Expect meaningfully
-  lower accuracy than the CRF-based parsers researched for this design (Mealie's own, and
-  `strangetom/ingredient-parser`'s 94.9%) — that's an accepted tradeoff (see brief section 4),
-  not a bar this module needs to clear.
+  this signal on the way out; it's the hook brief section 5's deferred "is this ingredient
+  known?" UI will eventually use.
+- `docker-compose.yml` wiring for the sidecar service is Phase 10's concern once it exists, but
+  this stage is what makes that wiring meaningful.
 
 ## Phase 5 — Recipe CRUD
 
@@ -128,8 +163,8 @@ data, not a cache of something else.
 - `GET /api/recipes/{id}` — a single recipe with its ingredients.
 - `POST /api/recipes`, `PUT /api/recipes/{id}` — create/edit, writing `recipes` +
   `recipe_ingredients` rows in one transaction. Manually-entered ingredient lines go through
-  Phase 4's parser too, same as imported ones. The response includes, per ingredient line,
-  whether its `ingredient_id` was newly created or matched an existing row (Phase 4's note) —
+  Phase 4b's parser too, same as imported ones. The response includes, per ingredient line,
+  whether its `ingredient_id` was newly created or matched an existing row (Phase 4b's note) —
   undisplayed by any UI yet, but present in the API from this phase on.
 - `DELETE /api/recipes/{id}` — **soft delete** (brief section 4): sets `deleted_at`, does not
   remove the row or its `recipe_ingredients`. `PUT` on an already-deleted recipe returns 404.
@@ -151,9 +186,10 @@ data, not a cache of something else.
   `kotlinx.serialization.json`, find a `Recipe`-typed object (top-level or inside `@graph`),
   map its fields (`name`, `recipeIngredient`, `recipeInstructions`, `recipeYield` → `servings`/
   `servings_text`, `prepTime`/`cookTime`/`totalTime` as ISO 8601 durations, `keywords`) onto
-  `recipes`/`recipe_ingredients` rows, running every `recipeIngredient` string through Phase 4's
-  parser — `recipeIngredient` is confirmed (brief section 4, via `recipe-scrapers`' own source)
-  to always be raw unparsed strings, so this parser is load-bearing here, not a fallback.
+  `recipes`/`recipe_ingredients` rows, running every `recipeIngredient` string through Phase
+  4b's parser — `recipeIngredient` is confirmed (brief section 4, via `recipe-scrapers`' own
+  source) to always be raw unparsed strings, so this parser is load-bearing here, not a
+  fallback.
   No image field is read or stored, per brief section 2. Same as Phase 5, the response flags
   which ingredient lines resolved to a new vs. existing canonical ingredient.
 - If this phase reveals that JSON-LD coverage is too thin across real-world recipe sites to be

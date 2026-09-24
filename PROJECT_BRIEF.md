@@ -65,19 +65,24 @@ Browser (VanJS UI)
       |
       v
 App server (Kotlin, JDK stdlib HTTP, REST/JSON API)
-      |                              |
-      v                              v
-  Postgres                   External recipe URLs
- (users, sessions,          (fetched at import time
-  recipes, ingredients,      only — never stored or
-  meal plan, shopping        proxied by this app)
-  lists — all of it,
-  no filesystem layer)
+      |                |                       |
+      v                v                       v
+  Postgres    Ingredient-parser sidecar   External recipe URLs
+ (users,       (Python, internal Docker    (fetched at import
+  sessions,     network only — see          time only — never
+  recipes,      section 4)                   stored or proxied)
+  meal plan,
+  shopping
+  lists — all
+  of it, no
+  filesystem
+  layer)
 ```
 
 There is no filesystem layer in this architecture at all — that's the headline difference from
 `shelf`'s three-way split between browser, app server, and a filesystem-plus-Postgres-index
-pair. Postgres is simply where everything durable lives.
+pair. Postgres is simply where everything durable lives. The ingredient-parser sidecar is the
+one deliberate exception to "everything is one JVM process" — see section 4 for why.
 
 ## 4. Key design decisions already made (with rationale)
 
@@ -196,24 +201,35 @@ fallback. **If JSON-LD proves too lossy in practice** (e.g. sites that only emit
 library (e.g. `jsoup`) is the anticipated next step — flagged here as an expected future
 dependency request per section 2's policy, not pre-approved.
 
-**Ingredient-line parsing is its own standalone module, built and tested before anything
-depends on it.** Neither schema.org's `recipeIngredient` nor hand-typed ingredient entry gives
-structured data for free — something has to turn a raw line into a quantity, unit, and
-ingredient. v1's approach is a regex-based heuristic parser: parse a leading mixed
-number/fraction/decimal as the quantity fraction, match the next token against the unit
-vocabulary (including its aliases) to resolve `unit_id`, treat a trailing comma-clause as
-`notes`, and resolve whatever's left as the name against `ingredients`/`ingredient_aliases`
-(exact match, auto-creating a new canonical ingredient on a miss, per the canonicalization
-note above) to get `ingredient_id`. This is expected to be the single hardest and
-most-iterated piece of the app, and it will get real lines wrong sometimes. Context from
-researching the field: the closest real prior art (a CRF model trained on ~100k lines, which
-Mealie itself ships, and its modern open-source successor `strangetom/ingredient-parser`,
-94.9% sentence-level accuracy on 81k+ training sentences) is real machine learning, not
-regex — larder's hand-rolled parser will not match that accuracy, and that's an accepted
-tradeoff, not an oversight. It's acceptable because failure degrades gracefully: `raw_text` is
-always preserved and always what displays by default, so a bad parse means an ingredient
-doesn't get auto-combined on a shopping list — never a data-loss or wrong-display failure. The
-manual-merge escape hatch below is the accepted workaround for exactly this gap.
+**Ingredient-line parsing runs through a Python sidecar service, not a hand-rolled Kotlin
+parser — reversed after the human asked whether existing work could be leveraged instead of
+rolling our own.** Neither schema.org's `recipeIngredient` nor hand-typed ingredient entry
+gives structured data for free — something has to turn a raw line into a quantity, unit, and
+ingredient name. A regex-based heuristic parser was the original v1 plan; research turned up no
+JVM/Kotlin-native library to use instead, and found that porting the closest real prior art
+(`strangetom/ingredient-parser`, a CRF model descended from the New York Times' original
+ingredient-phrase-tagger, MIT-licensed, actively maintained, 94.9% sentence-level accuracy on
+81k+ training sentences) to Kotlin is a multi-thousand-line undertaking disguised as a small
+one — its Viterbi decoder alone is simple, but it's useless without the feature-extraction and
+2,400-line postprocessing pipeline around it. A hosted API (Zestful) costs money per ingredient
+and conflicts with self-hosting outright. What *does* clear the bar: running the real
+`strangetom/ingredient-parser` package itself as a small sidecar container
+(`ingredient-parser/` — see its own README for the service), called over the internal Docker
+network from the Kotlin backend via `java.net.http.HttpClient` (already in the JDK — zero new
+Kotlin dependency for this). See `docs/decisions.md` for the full research trail.
+
+This isn't just a generic accuracy improvement — it fixes failure modes that would otherwise
+directly undermine the shopping-list-combination feature this app exists for. A regex parser's
+"whatever's left after quantity/unit is the name" rule makes `"2 large eggs"` and `"3 eggs"`
+resolve to different ingredient names (`"large eggs"` vs `"eggs"`), so they'd never combine on a
+shopping list despite being the same ingredient; the sidecar's model separates size/prep
+descriptors from the name specifically, so this doesn't happen. It still won't get every line
+right, and that's fine: `raw_text` is always preserved and always what displays by default, a
+failed or unreachable sidecar call falls back to raw-text-only exactly like a bad regex parse
+would have, and the manual shopping-list-item-merge escape hatch below covers whatever's still
+missed. `V1_PLAN.md` splits this into Phase 4a (the sidecar itself, done) and Phase 4b (the
+Kotlin-side `IngredientLineParser` interface, the HTTP call, and resolving its output against
+`ingredients`/`units` — not yet built).
 
 **Recipe deletion is a soft delete — the one deliberate divergence from `shelf`'s hard-delete
 philosophy.** `shelf` hard-deletes with no trash (brief section 6's original v1 scope, inherited
@@ -380,13 +396,20 @@ see section 4.
 
 ## 8. Docker and storage notes
 
-Much simpler than `shelf`'s, because there's no user-facing filesystem content to manage:
-- `docker-compose.yml` defines the app service and the Postgres service. Postgres's own data
+Simpler than `shelf`'s in the ways that matter for storage, though not quite as simple as
+originally planned now that a second runtime is in the picture:
+- `docker-compose.yml` defines the app service, the Postgres service, and the
+  ingredient-parser sidecar service (`ingredient-parser/` — section 4). Postgres's own data
   directory uses a named Docker volume (same as `shelf`'s `shelf-postgres-data` pattern) — that
   volume is infrastructure for Postgres itself, not a user-facing storage mount.
 - **No bind-mounted storage directory, and no `PUID`/`PGID` entrypoint pattern** — both existed
   in `shelf` specifically to make host-filesystem files readable/writable by both the container
   and the host user, which only matters when there's a bind mount in the first place.
+- **The ingredient-parser sidecar exposes no host port** — it's reachable only over the
+  internal Docker Compose network, by service name, the same way `app` already reaches
+  `postgres`. There's no reason for anything outside the deployment to ever call it directly.
+  This wiring is Phase 4b's job, not yet done (Phase 4a only built and verified the service
+  standalone).
 - An optional reverse-proxy service (e.g. Caddy) for TLS, same as `shelf`, kept optional.
 
 ## 9. Notes for the agent picking this up

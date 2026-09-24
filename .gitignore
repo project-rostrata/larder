@@ -6,3 +6,6 @@ data/
 .env
 .env.*
 docker/.env
+ingredient-parser/__pycache__/
+ingredient-parser/.pytest_cache/
+ingredient-parser/*.egg-info/

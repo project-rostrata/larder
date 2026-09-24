@@ -8,16 +8,19 @@ changes.
 
 ## Status
 
-**Phases 0–3 are done.** Repo scaffold and planning docs; a backend skeleton (hand-rolled
-router, sealed `ApiResult`/JSON error-envelope pattern, pooled JDBC connection, `GET
-/api/health`, `GET /api/version`); the full v1 database schema (`users`, `sessions`, the global
-`ingredients`/`ingredient_aliases`/`units`/`unit_conversions` vocabulary seeded with 21 starter
-units, `recipes` with soft-delete via `deleted_at`, `recipe_ingredients`, `meal_plan_entries`,
-`shopping_lists`, `shopping_list_items`, `shopping_list_item_sources`, applied by a hand-rolled
-migration runner ported from `shelf`'s); and auth — PBKDF2 password hashing, cookie-based
-sessions, `POST /api/register`/`login`/`logout`, `GET /api/me` behind `requireAuth`. Username +
-password only, no email column at all (unlike `shelf`, which collects and later dropped it —
-larder never had it to begin with, per the human's explicit direction).
+**Phases 0–3 and 4a are done.** Repo scaffold and planning docs; a backend skeleton
+(hand-rolled router, sealed `ApiResult`/JSON error-envelope pattern, pooled JDBC connection,
+`GET /api/health`, `GET /api/version`); the full v1 database schema (`users`, `sessions`, the
+global `ingredients`/`ingredient_aliases`/`units`/`unit_conversions` vocabulary seeded with 21
+starter units, `recipes` with soft-delete via `deleted_at`, `recipe_ingredients`,
+`meal_plan_entries`, `shopping_lists`, `shopping_list_items`, `shopping_list_item_sources`,
+applied by a hand-rolled migration runner ported from `shelf`'s); auth — PBKDF2 password
+hashing, cookie-based sessions, `POST /api/register`/`login`/`logout`, `GET /api/me` behind
+`requireAuth`, username + password only, no email column at all (unlike `shelf`, which collects
+and later dropped it — larder never had it to begin with, per the human's explicit direction);
+and a standalone ingredient-parser sidecar (`ingredient-parser/` — Python, wraps
+`strangetom/ingredient-parser`), built and verified in isolation but **not yet called by
+anything** — the Kotlin-side integration is Phase 4b, not yet started.
 
 Verified end-to-end against a real `postgres:18.6-alpine` container every phase, not just
 compiled: Phase 1's health/version/404 round-trip; Phase 2's migrations actually applying plus
@@ -32,7 +35,13 @@ rather than silently accepted, login with correct/wrong/nonexistent-username cre
 last two returning the identical `INVALID_CREDENTIALS` response, confirmed no username
 enumeration), logout actually invalidating the session server-side (confirmed via a following
 401, not just a 200 response), logout being idempotent, and the `Set-Cookie` attributes
-themselves (`larder_session`, `HttpOnly`, `SameSite=Lax`, correct `Max-Age`).
+themselves (`larder_session`, `HttpOnly`, `SameSite=Lax`, correct `Max-Age`). Phase 4a's
+sidecar was built, then verified for real: `pytest` (10 cases, real ingredient-line phrasing)
+passing both locally and inside the built Docker image; the built image actually running and
+answering `/health` and `/parse` over real HTTP; parsing still working with the container's
+network disabled entirely (`docker run --network none`), proving the NLTK data is genuinely
+baked in at build time and not fetched at runtime; and measured per-request latency (~4.5–5.8ms
+against a warm container) confirming the earlier performance estimate.
 
 ## System shape
 
@@ -41,12 +50,16 @@ Browser (VanJS UI — not yet built, Phase 9)
       |
       v
 App server (Kotlin, JDK stdlib HTTP, REST/JSON API)
-      |
-      v
-  Postgres (source of truth for everything — see PROJECT_BRIEF.md §4)
+      |                       :
+      v                       : not wired up yet (Phase 4b)
+  Postgres (source of truth   :
+   for everything)     Ingredient-parser sidecar (Python, ingredient-parser/ — built and
+                         verified standalone, Phase 4a; nothing calls it yet)
 ```
 
-Full rationale in `PROJECT_BRIEF.md` §3–4. Nothing here deviates from it yet.
+Full rationale in `PROJECT_BRIEF.md` §3–4. The one thing that's deviated from the brief's
+diagram so far is exactly this: the sidecar exists and works, but the dotted line (Kotlin →
+sidecar) isn't real yet.
 
 ## Repo layout
 
@@ -103,14 +116,31 @@ larder/
     migrations/
       0001_initial_schema.sql   all v1 tables, indexes, and constraints (PROJECT_BRIEF.md §7)
       0002_seed_units.sql       21 starter units (volume/mass/count) with conversion factors
-  docker/                      empty — Phase 10
+  ingredient-parser/            Phase 4a — standalone Python sidecar, see its own README.md
+    app.py                       stdlib http.server, POST /parse + GET /health, model loaded
+                                   once at import time, Fraction quantities (not floats)
+    requirements.txt              ingredient-parser-nlp==2.8.0 + its nltk/numpy/pint deps,
+                                    exact-pinned
+    Dockerfile                     pre-fetches NLTK data at build time (not runtime) via an
+                                     explicit download_dir, verified with --network none
+    test_app.py                     pytest, real HTTP requests against a real running
+                                      instance, covering the specific failure modes that
+                                      motivated this over a regex parser
+  docker/                      empty — Phase 10 (will need to wire ingredient-parser in too,
+                                once Phase 4b exists)
 ```
 
 ## Dependencies in use
 
-Exactly the pre-approved set from `PROJECT_BRIEF.md` §2 — nothing beyond it yet:
-`postgresql-42.7.13.jar` (JDBC driver), `kotlinx-serialization-core-jvm-1.11.0.jar`,
-`kotlinx-serialization-json-jvm-1.11.0.jar`. Same exact versions `shelf` already vetted.
+**Kotlin side**: exactly the pre-approved set from `PROJECT_BRIEF.md` §2 — nothing beyond it
+yet: `postgresql-42.7.13.jar` (JDBC driver), `kotlinx-serialization-core-jvm-1.11.0.jar`,
+`kotlinx-serialization-json-jvm-1.11.0.jar`. Same exact versions `shelf` already vetted. Still
+on bare `kotlinc`, no Gradle.
+
+**`ingredient-parser/` (Python, its own separate dependency set — see `AGENTS.md`'s
+"new runtime/service" policy)**: `ingredient-parser-nlp==2.8.0` and its own
+`nltk==3.10.3`/`numpy==2.5.3`/`pint==0.26.1`, exact-pinned in `ingredient-parser/requirements.txt`.
+No Flask or other web framework — stdlib `http.server`.
 
 ## Configuration
 
@@ -127,8 +157,14 @@ Read from environment variables at startup (`Main.kt`), no config file:
 | `LARDER_SESSION_DURATION_HOURS` | no | `720` (30 days) |
 | `LARDER_SECURE_COOKIES` | no | `false` (real deployments must override to `true`; local HTTP dev needs it off) |
 
+`ingredient-parser/` has its own separate, small config surface — see its own README.md
+(currently just `INGREDIENT_PARSER_PORT`, default `8000`). Not part of the table above; it's a
+different process with its own env-var namespace.
+
 ## Not built yet
 
-Everything past Phase 3: the ingredient-line parser, recipe CRUD, URL import, meal planning,
-shopping-list generation, the frontend, and Docker packaging. See `V1_PLAN.md` for the phase
-order.
+Phase 4b (the Kotlin-side `IngredientLineParser` interface, the HTTP call to the sidecar, and
+resolving its output against `ingredients`/`units`) and everything past Phase 4: recipe CRUD,
+URL import, meal planning, shopping-list generation, the frontend, and Docker packaging
+(including wiring `ingredient-parser` into `docker-compose.yml`). See `V1_PLAN.md` for the
+phase order.

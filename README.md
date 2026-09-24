@@ -41,14 +41,16 @@ are built the way they are, not just what was built.
 Not planned for v1, deliberately: images, recipe search, sharing, nutrition info — see
 [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) §5–6 for what's deferred and why.
 
-**Status: early build.** Phases 0–1 of [`V1_PLAN.md`](V1_PLAN.md) are done — a backend skeleton
-(router, JSON error envelopes, a pooled JDBC connection) with two endpoints. See
+**Status: early build.** Phases 0–3 and 4a of [`V1_PLAN.md`](V1_PLAN.md) are done — a backend
+skeleton, the full database schema, auth (register/login/logout), and a standalone Python
+ingredient-parser sidecar (built and tested, not yet called by anything — see
+[`ingredient-parser/README.md`](ingredient-parser/README.md)). See
 [`docs/architecture.md`](docs/architecture.md) for what's actually built right now.
 
 ## Quick start
 
-No Docker/frontend/schema yet — those land in later phases. To run just the current backend
-skeleton against a local Postgres:
+No Docker/frontend yet — those land in later phases. To run the backend against a local
+Postgres:
 
 ```
 cd backend
@@ -60,7 +62,12 @@ LARDER_DB_PASSWORD=... \
   ./run.sh
 ```
 
-`GET /api/health` and `GET /api/version` (port 8080 by default) are the only routes so far.
+Port 8080 by default. Routes so far: `GET /api/health`, `GET /api/version`,
+`POST /api/register`, `POST /api/login`, `POST /api/logout`, `GET /api/me`.
+
+The ingredient-parser sidecar is separate and runs independently — see
+[`ingredient-parser/README.md`](ingredient-parser/README.md); nothing in the Kotlin backend
+calls it yet (that's Phase 4b).
 
 ## Documentation
 

@@ -198,3 +198,81 @@ than left for later:
   "does this query filter by owner_id," easy to miss precisely because it looks like the same
   rule. Added explicitly to `AGENTS.md`'s ownership row, `SECURITY.md`, and `V1_PLAN.md`'s
   Phase 7/8/11 text so it isn't missed when those phases are actually built.
+
+## Ingredient-line parsing: a Python sidecar, not a hand-rolled Kotlin parser
+
+Phase 4 was originally planned as a hand-rolled Kotlin regex parser (see the "Ingredient/unit
+model redesigned..." entry above, which researched Mealie/Tandoor/Grocy's *ingredient-identity
+and unit-conversion* design but not ingredient-line *text-parsing* libraries specifically — that
+research existed only inline in `PROJECT_BRIEF.md`/`V1_PLAN.md` until now, never logged here;
+this entry closes that gap). Before building it, the human asked directly whether existing work
+could be leveraged instead. Two research passes (an Explore pass confirming what was already
+decided, then a dedicated Plan-agent research pass) found:
+
+- **No JVM/Kotlin-native ingredient-parsing library exists.** Confirmed via Maven Central's
+  search API (zero results for "ingredient") plus broad web/GitHub search. The one near-hit
+  (`JFfarrell/pantry`) is a 10-day-old, unlicensed, unverifiable personal Android project, not
+  a usable library.
+- **Porting `strangetom/ingredient-parser`'s trained model to Kotlin is not the small job the
+  premise assumed.** Reading the actual source: the CRF Viterbi decoder genuinely is simple
+  (~80–100 lines, pure NumPy matrix ops) — but it's useless without the feature-extraction
+  pipeline feeding it (NLTK POS tagging — itself a separately-trained model — ~20–25
+  hand-engineered features, a custom GloVe embedding) and the 2,400-line postprocessing engine
+  after it (ranges, composite amounts, multipliers, size/preparation/comment separation). Real
+  scope: a multi-thousand-line port across three separately-trained-or-engineered components,
+  with silent-failure risk (a mis-ported feature doesn't crash, it quietly produces worse
+  predictions). Not proportionate for v1 or v1.5 of a hobby-scale self-hosted app. The model
+  file itself is small, well-documented JSON, MIT-licensed, and trivially obtainable — none of
+  that was ever the hard part.
+- **Zestful, a hosted ingredient-parsing API, is real and still operating** (built by the same
+  person behind the original NYT ingredient-phrase-tagger) but costs $0.02/ingredient with no
+  bounded ceiling, is a single-maintainer commercial product, and would send every ingredient
+  line any self-hoster ever types to a third party — directly against the self-hosted/
+  low-dependency ethos this project and `shelf` both hold. Not adopted as a default dependency.
+- **Running `strangetom/ingredient-parser` itself as a small sidecar container is what actually
+  clears the bar**: MIT-licensed, actively maintained, 94.9% sentence-level / 98% word-level
+  accuracy on 81k+ training sentences, a clean `parse_ingredient()` entry point. Its accuracy
+  advantage lands specifically on failure modes that would otherwise undermine larder's
+  shopping-list-combination feature directly — e.g. separating size words from the ingredient
+  name (`"2 large eggs"` → name `"eggs"`, not `"large eggs"`) is what lets that combine with a
+  plain `"3 eggs"` elsewhere. A regex parser's "whatever's left is the name" rule would produce
+  two different names that never combine.
+
+**The human's own follow-up questions shaped the final architecture, not just the initial
+choice:**
+- Asked specifically what the accuracy advantage looks like in practice, not just as a
+  percentage — the size-word-separation example above, and several others (parenthetical
+  package sizes like `"1 (14.5 oz) can diced tomatoes"`, multiple trailing clauses like
+  `"sifted, divided"`, quantity appearing after the name like `"Flour, 2 cups"`) became the
+  concrete basis for Phase 4a's actual test cases, not hypothetical justification.
+- Asked about CPU-only inference performance given the real usage pattern (parsing happens when
+  a recipe is saved/imported, not constantly). Reasoned estimate at the time: single-digit-to-
+  low-double-digit milliseconds once warm, since the model has no GPU/neural-net dependency
+  anywhere in its stack. **Confirmed by direct measurement once Phase 4a was actually built and
+  running: ~4.5–5.8ms per request against a warm container.**
+- Asked directly how the sidecar would run mechanically — not a subprocess shelled out from
+  Kotlin (would pay the full model-load cost on every call, and would force Python into the
+  same container as the JVM app) and not the `ingredient-parser` project's own "webtools" (a
+  training-data labeling tool, not a production API). The actual answer: a small first-party
+  HTTP wrapper we write ourselves, run as its own container, called over the internal Docker
+  network — this became Phase 4a's design directly.
+- **Decided to build the sidecar as an explicit phase now**, rather than gating it on evidence
+  of the regex parser's real-world shortfall — the "ship the weaker approach, upgrade later if
+  it's not good enough" framing was the original recommendation, but the human chose to build
+  the better-evidenced approach directly instead.
+
+**Scope split, not a renumbering**: `V1_PLAN.md`'s "Phase 4" stays one heading, split into
+Phase 4a (the sidecar itself — done, see `ingredient-parser/README.md`) and Phase 4b (the
+Kotlin-side integration — not yet built). No other phase's number changed, matching `shelf`'s
+own precedent of annotating scope changes in place rather than renumbering a document other
+files already cross-reference by number.
+
+**One real implementation-time correction, caught while building Phase 4a**: the Dockerfile
+originally set `ENV NLTK_DATA=/usr/local/share/nltk_data` assuming NLTK's downloader would
+write there — it doesn't; `nltk.download()` ignores `NLTK_DATA` for its *write* location
+(though it does honor it for the *search* path) and defaults to the current user's home
+directory regardless. Confirmed by testing, not assumed. Fixed by calling
+`nltk.download(..., download_dir=...)` explicitly rather than relying on the env var alone —
+otherwise this would have been a latent bug waiting for whenever the image adds a non-root
+`USER` (root's home directory wouldn't be relevant to a different user at that point, and the
+container would silently need runtime internet access it wasn't supposed to need).

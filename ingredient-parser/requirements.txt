@@ -1,0 +1,9 @@
+# Pinned to exact versions for reproducible builds -- resolved from a clean install of
+# ingredient-parser-nlp on 2026-09-23. A checksum-verified install (pip install --require-hashes)
+# would be a nice further hardening step, paralleling AGENTS.md's jar-checksum discipline for
+# the Kotlin side, but wasn't set up in this initial pass -- exact-version pinning is the
+# baseline here.
+ingredient-parser-nlp==2.8.0
+nltk==3.10.3
+numpy==2.5.3
+pint==0.26.1

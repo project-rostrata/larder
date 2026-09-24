@@ -128,30 +128,50 @@ this plan. Lives in `ingredient-parser/` (its own README covers the service in f
 - **Not done yet, deliberately out of scope for this stage**: nothing in the Kotlin backend or
   `docker-compose.yml` calls this service. See Phase 4b.
 
-### Phase 4b — Kotlin integration — not yet started
+### Phase 4b — Kotlin integration — done
 
-- An `IngredientLineParser` interface (or similar seam) that Phase 5/6 call through, so the
-  implementation underneath — this HTTP call today, conceivably something else later — is
-  swappable without touching their code.
-- `java.net.http.HttpClient` (already in the JDK, zero new Kotlin dependency) calling the
-  sidecar's `POST /parse` over the internal Docker network; a short timeout; on any failure or
-  timeout, fall back to `raw_text`-only (null quantity/unit/ingredient) — the same graceful
-  degradation the original regex-parser plan already called for.
-- Map the sidecar's response onto larder's schema: resolve its `unit` string against
-  `units.name`/`abbreviation`/`aliases`, resolve its ingredient `name` against
-  `ingredients`/`ingredient_aliases` (exact match after normalization, auto-creating a new
-  canonical row on a miss, per brief section 4), convert its `{"numerator", "denominator"}`
-  straight into `quantity_numerator`/`quantity_denominator`. The sidecar can return *multiple*
-  `amount` entries for one line (e.g. `"1 (14.5 oz) can diced tomatoes"` → both "1 can" and
-  "14.5 oz") — deciding how that collapses into larder's single quantity/unit pair per
-  `recipe_ingredients` row is real design work for this stage, not a detail to gloss over.
-- The create/import call this feeds into (Phase 5/6) must be able to report, per ingredient
-  line, whether its `ingredient_id` was matched to a pre-existing row or created new during that
-  call — this falls out of the get-or-create lookup itself, no extra state needed. Don't lose
-  this signal on the way out; it's the hook brief section 5's deferred "is this ingredient
-  known?" UI will eventually use.
-- `docker-compose.yml` wiring for the sidecar service is Phase 10's concern once it exists, but
-  this stage is what makes that wiring meaningful.
+- `larder.ingredients.IngredientLineParser` — the interface (`ParsedIngredientLine` out: a
+  quantity fraction, a raw unit word, a raw ingredient-name string, notes, always `raw_text`),
+  and `larder.ingredients.SidecarIngredientLineParser` — the one implementation, calling the
+  sidecar's `POST /parse` via `java.net.http.HttpClient` (already in the JDK, zero new Kotlin
+  dependency). Any failure — connection refused, timeout, non-200, unparseable body — degrades
+  to an all-null `ParsedIngredientLine` rather than throwing; verified directly by pointing it
+  at an unreachable URL, not just assumed.
+- The JSON-extraction logic (`parseSidecarResponse`, `extractPrimaryAmount`) is a pure,
+  standalone top-level function specifically so it's unit-testable against canned response
+  bodies without needing a live sidecar — `backend/test/SidecarIngredientLineParserTest.kt`, 8
+  cases, all built from real captured sidecar responses. **This is also where
+  `backend/test/TestMain.kt` and `backend/test.sh` first come into existence** — `AGENTS.md`'s
+  testing section anticipated Phase 1 or Phase 4 as the likely trigger; Phase 4a turned out to
+  be Python, so Phase 4b is where it actually landed.
+- **The multi-amount-collapsing design question is resolved**: always take the *first* entry in
+  the sidecar's `amount` list (lowest `starting_index` — confirmed the list is already ordered
+  this way) as the row's quantity/unit; a `CompositeIngredientAmount` (`"1 cup plus 2
+  tablespoons"`) recurses into *its* first sub-amount rather than being summed; a `RANGE` amount
+  (`"2-3 cloves"`) uses `quantity_max`, not `quantity` — better to slightly over-buy on a
+  shopping list than under-buy. Anything not captured this way is never lost, only
+  unstructured: `raw_text` always has the full original line. Summing composite amounts, or
+  choosing more cleverly between a package count and its per-unit size, would need the same
+  unit-family conversion machinery Phase 8 builds for shopping-list combination — judged not
+  worth duplicating here for v1. See `docs/decisions.md`.
+- `larder.db.IngredientRow`/`IngredientRepository` (exact match on `ingredients.name` or
+  `ingredient_aliases.alias`, case-insensitive; auto-creates and reports whether *this call* is
+  what created it — races on the unique index handled explicitly, not just assumed away) and
+  `larder.db.UnitRow`/`UnitRepository` (match on `units.name`/`abbreviation`/`aliases`; no
+  create — units are seeded, not user-grown). Both global, not `owner_id`-scoped, per brief
+  section 4.
+- `larder.ingredients.IngredientResolver` ties the two together: `ParsedIngredientLine` in,
+  `ResolvedIngredientLine` out (`unitId`, `ingredientId`, `ingredientWasNewlyCreated`, plus the
+  quantity fraction and notes carried through unchanged). This is the "is this ingredient
+  known?" signal from brief section 5, now real, not just planned.
+- **Nothing calls any of this yet** — there's no recipe-creation endpoint for it to be wired
+  into (that's Phase 5/6). Verified instead with a temporary, not-committed Kotlin entry point
+  run against a real `ingredient-parser` sidecar container and a real Postgres: parsed and
+  resolved five real ingredient lines end-to-end into actual rows, confirmed resolving the same
+  new ingredient twice is idempotent (same id, correct `ingredientWasNewlyCreated` both times),
+  confirmed alias-based unit resolution (`"cups"` → the seeded `cup` unit), and confirmed
+  graceful degradation against an unreachable sidecar.
+- `docker-compose.yml` wiring for the sidecar service is still Phase 10's concern.
 
 ## Phase 5 — Recipe CRUD
 

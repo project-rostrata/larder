@@ -227,9 +227,22 @@ descriptors from the name specifically, so this doesn't happen. It still won't g
 right, and that's fine: `raw_text` is always preserved and always what displays by default, a
 failed or unreachable sidecar call falls back to raw-text-only exactly like a bad regex parse
 would have, and the manual shopping-list-item-merge escape hatch below covers whatever's still
-missed. `V1_PLAN.md` splits this into Phase 4a (the sidecar itself, done) and Phase 4b (the
-Kotlin-side `IngredientLineParser` interface, the HTTP call, and resolving its output against
-`ingredients`/`units` — not yet built).
+missed. `V1_PLAN.md` splits this into Phase 4a (the sidecar itself) and Phase 4b (the Kotlin-side
+`IngredientLineParser` interface, the HTTP call, and resolving its output against
+`ingredients`/`units`) — both done.
+
+**One real design question Phase 4b had to resolve: the sidecar can return more than one
+`amount` per line** (`"1 (14.5 oz) can diced tomatoes"` → both "1 can" and "14.5 oz";
+`"1 cup plus 2 tablespoons flour"` → a composite wrapping two sub-amounts), but a
+`recipe_ingredients` row stores exactly one quantity/unit. Resolved by always taking the *first*
+amount (the list is confirmed ordered this way) — a composite recurses into its own first
+sub-amount rather than being summed, a range amount uses its upper bound (`quantity_max`) rather
+than the lower one, since slightly over-buying on a shopping list beats under-buying. Nothing
+extra is captured structurally beyond that first amount, but nothing is lost either — `raw_text`
+always has the full line. Properly summing composite amounts, or choosing more cleverly between
+a package count and its per-unit size, would need the same unit-family conversion machinery
+Phase 8 builds for shopping-list combination — not worth duplicating here for v1. See
+`docs/decisions.md`.
 
 **Recipe deletion is a soft delete — the one deliberate divergence from `shelf`'s hard-delete
 philosophy.** `shelf` hard-deletes with no trash (brief section 6's original v1 scope, inherited
@@ -408,8 +421,10 @@ originally planned now that a second runtime is in the picture:
 - **The ingredient-parser sidecar exposes no host port** — it's reachable only over the
   internal Docker Compose network, by service name, the same way `app` already reaches
   `postgres`. There's no reason for anything outside the deployment to ever call it directly.
-  This wiring is Phase 4b's job, not yet done (Phase 4a only built and verified the service
-  standalone).
+  The Kotlin-side code that calls it (`SidecarIngredientLineParser`) is built and works — Phase
+  4b verified it directly against a live sidecar container — but the actual
+  `docker-compose.yml` entry that runs both services together as one deployment is still
+  Phase 10's job.
 - An optional reverse-proxy service (e.g. Caddy) for TLS, same as `shelf`, kept optional.
 
 ## 9. Notes for the agent picking this up

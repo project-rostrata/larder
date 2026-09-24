@@ -8,19 +8,25 @@ changes.
 
 ## Status
 
-**Phases 0–3 and 4a are done.** Repo scaffold and planning docs; a backend skeleton
-(hand-rolled router, sealed `ApiResult`/JSON error-envelope pattern, pooled JDBC connection,
-`GET /api/health`, `GET /api/version`); the full v1 database schema (`users`, `sessions`, the
-global `ingredients`/`ingredient_aliases`/`units`/`unit_conversions` vocabulary seeded with 21
-starter units, `recipes` with soft-delete via `deleted_at`, `recipe_ingredients`,
-`meal_plan_entries`, `shopping_lists`, `shopping_list_items`, `shopping_list_item_sources`,
-applied by a hand-rolled migration runner ported from `shelf`'s); auth — PBKDF2 password
-hashing, cookie-based sessions, `POST /api/register`/`login`/`logout`, `GET /api/me` behind
-`requireAuth`, username + password only, no email column at all (unlike `shelf`, which collects
-and later dropped it — larder never had it to begin with, per the human's explicit direction);
-and a standalone ingredient-parser sidecar (`ingredient-parser/` — Python, wraps
-`strangetom/ingredient-parser`), built and verified in isolation but **not yet called by
-anything** — the Kotlin-side integration is Phase 4b, not yet started.
+**Phases 0–4 are done.** Repo scaffold and planning docs; a backend skeleton (hand-rolled
+router, sealed `ApiResult`/JSON error-envelope pattern, pooled JDBC connection, `GET
+/api/health`, `GET /api/version`); the full v1 database schema (`users`, `sessions`, the global
+`ingredients`/`ingredient_aliases`/`units`/`unit_conversions` vocabulary seeded with 21 starter
+units, `recipes` with soft-delete via `deleted_at`, `recipe_ingredients`, `meal_plan_entries`,
+`shopping_lists`, `shopping_list_items`, `shopping_list_item_sources`, applied by a hand-rolled
+migration runner ported from `shelf`'s); auth — PBKDF2 password hashing, cookie-based sessions,
+`POST /api/register`/`login`/`logout`, `GET /api/me` behind `requireAuth`, username + password
+only, no email column at all (unlike `shelf`, which collects and later dropped it — larder
+never had it to begin with, per the human's explicit direction); a standalone ingredient-parser
+sidecar (`ingredient-parser/` — Python, wraps `strangetom/ingredient-parser`); and the Kotlin
+side that calls it — `larder.ingredients.IngredientLineParser`/`SidecarIngredientLineParser`,
+`larder.ingredients.IngredientResolver`, and the `IngredientRepository`/`UnitRepository` it
+resolves against. **Nothing calls any of this yet** — there's no recipe-creation endpoint for
+it to be wired into (Phase 5/6).
+
+**`backend/test/TestMain.kt` and `backend/test.sh` exist for the first time as of Phase 4b** —
+`AGENTS.md`'s testing section anticipated "Phase 1 or Phase 4" as the trigger; Phase 4a turned
+out to be Python (its own separate `pytest` suite), so Phase 4b is where it actually landed.
 
 Verified end-to-end against a real `postgres:18.6-alpine` container every phase, not just
 compiled: Phase 1's health/version/404 round-trip; Phase 2's migrations actually applying plus
@@ -41,7 +47,14 @@ passing both locally and inside the built Docker image; the built image actually
 answering `/health` and `/parse` over real HTTP; parsing still working with the container's
 network disabled entirely (`docker run --network none`), proving the NLTK data is genuinely
 baked in at build time and not fetched at runtime; and measured per-request latency (~4.5–5.8ms
-against a warm container) confirming the earlier performance estimate.
+against a warm container) confirming the earlier performance estimate. Phase 4b's Kotlin code
+was verified the same way, against real running containers, via a temporary (not committed)
+entry point rather than the checked-in test suite (DB/network-touching code doesn't fit the
+hermetic hand-rolled suite — see `docs/decisions.md`): five real ingredient lines parsed and
+resolved end-to-end into real rows, resolving the same new ingredient twice confirmed
+idempotent (same id, correct `ingredientWasNewlyCreated` both times), alias-based unit
+resolution confirmed (`"cups"` → the seeded `cup` unit), and graceful degradation against an
+unreachable sidecar confirmed (logs a warning, returns an all-null result, never throws).
 
 ## System shape
 
@@ -50,16 +63,16 @@ Browser (VanJS UI — not yet built, Phase 9)
       |
       v
 App server (Kotlin, JDK stdlib HTTP, REST/JSON API)
-      |                       :
-      v                       : not wired up yet (Phase 4b)
-  Postgres (source of truth   :
-   for everything)     Ingredient-parser sidecar (Python, ingredient-parser/ — built and
-                         verified standalone, Phase 4a; nothing calls it yet)
+      |                       |
+      v                       v
+  Postgres (source of truth   Ingredient-parser sidecar (Python, ingredient-parser/)
+   for everything)
 ```
 
-Full rationale in `PROJECT_BRIEF.md` §3–4. The one thing that's deviated from the brief's
-diagram so far is exactly this: the sidecar exists and works, but the dotted line (Kotlin →
-sidecar) isn't real yet.
+Full rationale in `PROJECT_BRIEF.md` §3–4. The Kotlin code that calls the sidecar
+(`SidecarIngredientLineParser`) exists and is verified — this arrow is real — but nothing in
+the app constructs or uses it yet, since there's no recipe-creation endpoint calling into it
+(Phase 5/6). `docker-compose.yml` doesn't run the two services together yet either (Phase 10).
 
 ## Repo layout
 
@@ -103,6 +116,26 @@ larder/
         UserRow.kt / UserRepository.kt       id, username, password_hash, created_at only —
                                                no email/is_admin/quota_bytes, no findAll()
         SessionRow.kt / SessionRepository.kt  ported from shelf's, unchanged shape
+        IngredientRow.kt / IngredientRepository.kt  global, not owner_id-scoped; exact match on
+                                                      name or ingredient_aliases; auto-creates
+                                                      and reports whether this call created it
+        UnitRow.kt / UnitRepository.kt         global; match on name/abbreviation/aliases; no
+                                                 create — units are seeded, not user-grown
+      ingredients/
+        IngredientLineParser.kt   the interface + ParsedIngredientLine (raw split, not yet
+                                    resolved against larder's own tables)
+        SidecarIngredientLineParser.kt  calls the sidecar over HTTP; degrades to an all-null
+                                          result on any failure, verified directly, never
+                                          throws. parseSidecarResponse()/extractPrimaryAmount()
+                                          are pure top-level functions, unit-tested separately
+        IngredientResolver.kt      ParsedIngredientLine + the two repositories above ->
+                                     ResolvedIngredientLine (unitId, ingredientId,
+                                     ingredientWasNewlyCreated)
+    test/
+      TestMain.kt                 hand-rolled runner, ported from shelf's — reflectively finds
+                                    and runs every test*() in the classes listed here
+      SidecarIngredientLineParserTest.kt  8 cases, built from real captured sidecar responses
+                                            (multiple amounts, composite, range, notes-joining)
     lib/
       DEPENDENCIES.sha1        filename/sha1/source-url manifest — see AGENTS.md
       fetch-deps.sh             downloads + verifies the jars above; jars themselves are
@@ -111,6 +144,8 @@ larder/
                                  dependency/build-tool policy for when that might change)
     run.sh                     runs the compiled backend; defaults LARDER_MIGRATIONS_DIR to
                                  ../db/migrations for local dev
+    test.sh                    compiles src/+test/, runs TestMain -- hermetic tests only, see
+                                 docs/decisions.md for why DB/network-touching code isn't here
   frontend/                    empty — Phase 9
   db/
     migrations/
@@ -163,8 +198,7 @@ different process with its own env-var namespace.
 
 ## Not built yet
 
-Phase 4b (the Kotlin-side `IngredientLineParser` interface, the HTTP call to the sidecar, and
-resolving its output against `ingredients`/`units`) and everything past Phase 4: recipe CRUD,
-URL import, meal planning, shopping-list generation, the frontend, and Docker packaging
-(including wiring `ingredient-parser` into `docker-compose.yml`). See `V1_PLAN.md` for the
-phase order.
+Everything past Phase 4: recipe CRUD (the first thing to actually call
+`IngredientLineParser`/`IngredientResolver`), URL import, meal planning, shopping-list
+generation, the frontend, and Docker packaging (including wiring `ingredient-parser` into
+`docker-compose.yml`). See `V1_PLAN.md` for the phase order.

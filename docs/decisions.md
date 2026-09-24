@@ -276,3 +276,46 @@ directory regardless. Confirmed by testing, not assumed. Fixed by calling
 otherwise this would have been a latent bug waiting for whenever the image adds a non-root
 `USER` (root's home directory wouldn't be relevant to a different user at that point, and the
 container would silently need runtime internet access it wasn't supposed to need).
+
+## Phase 4b: the multi-amount-collapsing rule, and where the Kotlin test suite actually started
+
+**The design question `V1_PLAN.md` flagged in advance — how to collapse the sidecar's
+possibly-multiple `amount` entries into larder's single quantity/unit pair — was resolved by
+inspecting real sidecar output, not guessed at.** Sent several real lines through the actual
+running service before writing the resolution code:
+- `"1 (14.5 oz) can diced tomatoes"` and `"3 15-oz cans black beans"` each return two plain
+  amounts (count unit first, mass unit second) — no field reliably distinguishes "this is the
+  primary purchasable quantity" from "this is descriptive package-size context" (`MULTIPLIER`
+  is only set for an explicit `"N x"` phrasing like `"2 x 400g cans"`, not this parenthetical
+  form; `SINGULAR` doesn't cleanly separate the cases either).
+- `"1 cup plus 2 tablespoons flour"` returns something structurally different: one
+  `CompositeIngredientAmount` wrapping two sub-amounts (with `join`/`subtractive` fields), not
+  two plain amounts — a real, additive relationship the library itself distinguishes from the
+  count/package-size case above.
+- `"2-3 cloves garlic, minced"` returns one amount with `RANGE: true`, `quantity: 2`,
+  `quantity_max: 3`.
+
+**Decision**: always take the first entry in the `amount` list (confirmed ordered by
+`starting_index`) as the row's quantity/unit. A composite recurses into its own first
+sub-amount rather than being summed. A range amount uses `quantity_max`, not `quantity` — for a
+shopping list, better to slightly over-buy than under-buy. Everything not captured this way is
+never lost, only unstructured — `raw_text` always has the full original line regardless.
+Properly summing composite amounts, or choosing more cleverly between a package's count and its
+per-unit size, would need the same unit-family conversion machinery Phase 8 builds for
+shopping-list combination — judged not worth duplicating here for v1; revisit if real recipes
+turn out to lean on composite amounts often enough for the current simplification to matter.
+
+**`backend/test/TestMain.kt` and `backend/test.sh` were built here, not earlier.**
+`AGENTS.md`'s testing section had already flagged "Phase 1 or Phase 4" as the likely trigger for
+when larder's first real Kotlin tests — and therefore the hand-rolled test-discovery
+infrastructure itself, ported from `shelf`'s — would show up. Phase 4a turned out to be Python
+(its own `pytest` suite, nothing to do with this), so Phase 4b is where it actually landed, as
+anticipated. Following `shelf`'s own demonstrated pattern exactly (confirmed by reading
+`shelf`'s `MigrationRunnerTest.kt`, which tests only the pure filename-parsing logic and not
+the live-database-touching `run()` method): the hand-rolled suite stays scoped to hermetic
+tests that need no external service to run. The JSON-extraction logic
+(`parseSidecarResponse`/`extractPrimaryAmount`) is pure and lives there, built from real
+captured sidecar responses, not synthetic ones. `IngredientRepository`/`UnitRepository`/
+`IngredientResolver` genuinely need a live Postgres and were instead verified with a temporary,
+not-committed Kotlin entry point run against real containers — same tier of verification every
+other phase has gotten, just not embedded in the checked-in suite.

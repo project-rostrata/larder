@@ -401,3 +401,108 @@ this phase's design — the file says so directly. The `@graph`, multi-typed-`@t
 patterns this sandbox's network couldn't reach a real example of during this pass — the file
 says that too, rather than presenting hand-constructed fixtures as if they were captured the
 same way the food.com one was.
+
+## Phase 9a: query-param routing, card-grid recipe list, and two real bugs caught before shipping
+
+**Two consequential frontend forks were resolved by asking the human directly rather than
+guessing**, since both are hard to change later without a rewrite: routing model (query-param
+state on a single route, matching `shelf`'s own `router.js` pattern exactly, vs. real
+path-based routes with client-side history) and recipe-list layout (a card grid vs. a table like
+`shelf`'s `FileTable`). The human picked the recommended option both times — query-param
+routing, card grid — so both are now fixed conventions for the rest of the frontend, including
+Phase 9b.
+
+**Query-param routing means the static file server needs no SPA-fallback logic.** Every view
+lives at path `/`; only the `?view=`/`&id=`/`&tag=` query string changes, and query strings
+don't affect which file a GET request resolves to. `StaticFileHandler` can stay as simple as
+"serve the file at this exact path, or `index.html` isn't special-cased at all beyond being the
+file `GET /` naturally resolves to" — no "any unknown path serves index.html" rule was needed,
+which real path-based routing would have required.
+
+**Card grid, not a table.** `shelf`'s `FileTable` fits files well (name, size, modified — dense
+tabular metadata). A recipe's most useful at-a-glance information (title, a tag or two, roughly
+how long it takes) fits a card better than a table row, and a grid reads better at a glance when
+browsing something you'll pick from rather than manage. Chosen despite table-based `FileTable`
+being the more direct `shelf` precedent — matching `shelf`'s *ethos* (plain, unfussy, no icon
+library) doesn't mean copying every literal layout choice.
+
+**Two real bugs were caught and fixed during this phase's own live verification, not reported
+after the fact:**
+
+1. `RecipeList.js`'s `Grid()` originally wrapped the reactively-rendered recipe cards in a plain
+   `<div>` inside `.recipe-grid`. CSS Grid lays out its *direct* children according to
+   `grid-template-columns`; an extra wrapper div becomes the one grid item instead, and the
+   cards inside it just stack in normal document flow — the grid would have silently degraded to
+   a single column no matter the viewport width. VanJS reactive bindings can only return one
+   node, so some wrapper is unavoidable when a binding needs to produce a variable-length list of
+   siblings; the fix is `style: "display:contents"` on that wrapper, which removes it from the
+   box-layout tree entirely while keeping it in the DOM, so its children lay out as if they were
+   direct children of `.recipe-grid`. The same pattern was then applied proactively in
+   `RecipeForm.js`'s `DynamicRows()`, which has the identical "reactive binding needs to render a
+   variable-length list of sibling rows" shape.
+2. `RecipeList()` called `refreshRecipeList()` itself on mount, not realizing `router.js`'s
+   `navigate()`/`applyUrlToState()` already calls it via `loadForCurrentView()` on every
+   navigation to the `"recipes"` view — including the very first page load. Every visit to the
+   list was firing two identical `GET /api/recipes` requests. Fixed by making the rule explicit
+   and consistent across every view: `router.js` owns triggering data loads, view components
+   only render `state`, they never fetch on their own. `RecipeDetail.js` and `RecipeForm.js`
+   were written to this rule from the start rather than needing the same fix.
+
+**No headless-browser verification was available or attempted.** Everything above was verified
+against the real HTTP API (Postgres + the real sidecar + the compiled backend serving the real
+`frontend/` directory) and by hand-tracing VanJS's reactivity semantics against its vendored
+source, plus a `node --check` syntax pass on every frontend file — but nothing rendered the UI
+in an actual browser or DOM. Neither Playwright, jsdom, nor Selenium was present in this
+environment, and installing one (a network fetch of a browser binary) wasn't requested, so this
+is flagged here rather than silently treated as "the UI works."
+
+## Phase 10: one bundled image instead of a separate sidecar service, and why a dead sidecar doesn't end the container
+
+**The human asked for a single deployable Docker image, not the separate
+app-service/sidecar-service split `V1_PLAN.md`'s original Phase 10 sketch implicitly assumed.**
+`AGENTS.md`'s "new runtime/service" policy already treats the sidecar as a bigger category of
+change than a jar, and its stated default was to wire it into `docker-compose.yml` as its own
+service on an internal-only network, mirroring `ingredient-parser`'s standalone Dockerfile.
+Bundling it into the app's own image instead is a direct, explicit instruction from the human,
+not a default the app arrived at on its own — recorded here because it's a real deviation from
+that policy's stated default, not because the policy was wrong.
+
+**The runtime stage is built on `python:3.12-slim` (glibc) with a JRE added via `apt`, not an
+Alpine JRE base with Python added via `apk`.** `ingredient-parser/Dockerfile` already
+established that its dependencies need glibc — `numpy` and `regex` ship manylinux wheels that
+only install on glibc; Alpine's musl libc would force both to compile from source at build time
+instead, slower and more fragile. Starting the combined image from the already-proven Python
+base and adding the JRE (rather than the reverse) avoids re-litigating that finding. One real
+snag hit and fixed during this phase: `python:3.12-slim`'s current base is Debian trixie, whose
+apt repos dropped `openjdk-17-jre-headless` in favor of 21 — `apt-get install` failed with a
+clear "no installation candidate" error, not a silent wrong-version install, so this was caught
+immediately and the Dockerfile now installs `openjdk-21-jre-headless`.
+
+**`docker/entrypoint.sh` starts the sidecar and the app as direct child processes with no
+supervisor dependency (no s6-overlay, no supervisord)** — mirroring the pattern `shelf`'s
+`docker/standalone-entrypoint.sh` already established for coordinating more than one process in
+a single container. **It deliberately diverges from that precedent on one point: only the app
+process's own exit ends the container, not the sidecar's.** `shelf`'s standalone entrypoint
+bundles Postgres, which the app genuinely cannot function without, so either process dying means
+the container isn't healthy. The sidecar is different in kind — Phase 5's live verification
+already confirmed the app degrades gracefully to raw-text-only ingredients when the sidecar is
+unreachable, mid-session, without throwing. Ending the container on a sidecar crash would make
+the *bundled* deployment strictly less resilient than the *unbundled* one (a separate sidecar
+container restarting on its own, per Docker's normal restart policy, while the app kept serving)
+— the opposite of what bundling was supposed to simplify. This was verified directly, not just
+reasoned about: the sidecar's process was killed inside a running container, the container
+stayed up, `GET /api/health` kept responding, and a subsequent recipe create correctly fell back
+to an all-null unresolved ingredient rather than erroring. A clean `docker stop` afterward still
+exited promptly (exit code 143, the normal SIGTERM result) with no forced kill needed.
+
+**No reverse-proxy service, unlike the original Phase 10 sketch's "optional" mention.** Not
+asked for, and TLS termination is a deployment-specific decision (whatever the human already
+runs, if anything) rather than something this repo should prescribe. Can be added later if a
+specific need shows up.
+
+Verified live end-to-end via `docker compose -f docker/docker-compose.yml up --build`: the app
+image serves the real frontend and API on the same port as before, the bundled sidecar answers
+over loopback inside the container (confirmed via real ingredient parsing through the full
+create-recipe flow — the same size-word-stripping and multi-clause-notes behavior already
+verified in Phase 9a), and Postgres migrations apply automatically on first start via the
+existing `healthcheck`-gated `depends_on` ordering.

@@ -18,6 +18,14 @@ class RouteContext(
 
 fun RouteContext.readBody(): String = exchange.requestBody.readAllBytes().decodeToString()
 
+// A non-JSON response — used only for serving the frontend's static files (Phase 9). Unlike
+// shelf's equivalent, larder's frontend files are all small (no arbitrary-size user downloads
+// exist in this app at all), so this buffers the whole body rather than streaming — simpler,
+// and there's nothing here that would ever be large enough for that tradeoff to matter.
+sealed class StaticResult
+data class StaticFile(val contentType: String, val body: ByteArray) : StaticResult()
+data class StaticFailed(val err: Err) : StaticResult()
+
 sealed class MatchResult {
     data class Matched(val handler: Handler, val pathParams: Map<String, String>) : MatchResult()
     object NotFound : MatchResult()
@@ -42,12 +50,13 @@ fun parseQuery(raw: String?): Map<String, String> {
 private fun splitPath(path: String): List<String> = path.trim('/').split('/').filter { it.isNotEmpty() }
 
 // Hand-rolled router on com.sun.net.httpserver.HttpServer, ported from shelf's Router.kt — see
-// PROJECT_BRIEF.md §2 and V1_PLAN.md Phase 1. JSON-only for now (get/post/put/delete): unlike
-// shelf, larder has no binary/streaming responses planned until static frontend serving lands
-// in Phase 9 — that capability gets added then, not speculatively now.
+// PROJECT_BRIEF.md §2 and V1_PLAN.md Phase 1. serveStatic() added Phase 9 — the first thing
+// needing a non-JSON response (browsers are strict about Content-Type for <script type="module">,
+// so static files can't go through the JSON-envelope respond() path below).
 class Router {
     private val logger = Logger.getLogger(Router::class.qualifiedName)
     private val routes = mutableListOf<Route>()
+    private var staticFallback: ((String) -> StaticResult)? = null
 
     fun get(pattern: String, handler: Handler) {
         routes += Route("GET", parsePattern(pattern), handler)
@@ -63,6 +72,12 @@ class Router {
 
     fun delete(pattern: String, handler: Handler) {
         routes += Route("DELETE", parsePattern(pattern), handler)
+    }
+
+    // Tried only when no /api/* route matched, method is GET, and the path isn't under /api/ —
+    // a mistyped API route still gets a clean API-shaped 404, not a static "no such file".
+    fun serveStatic(handler: (String) -> StaticResult) {
+        staticFallback = handler
     }
 
     private fun parsePattern(pattern: String): List<Segment> =
@@ -103,14 +118,20 @@ class Router {
     private fun dispatch(exchange: HttpExchange) {
         val method = exchange.requestMethod
         val path = exchange.requestURI.path
-        val result = when (val match = match(method, path)) {
-            is MatchResult.NotFound -> Err(404, "NOT_FOUND", "No route for $method $path")
+        when (val match = match(method, path)) {
+            is MatchResult.NotFound -> {
+                val fallback = staticFallback
+                if (method == "GET" && !path.startsWith("/api/") && fallback != null) {
+                    respondStatic(exchange, guardedStatic(method, path) { fallback(path) })
+                } else {
+                    respondJson(exchange, Err(404, "NOT_FOUND", "No route for $method $path"))
+                }
+            }
             is MatchResult.Matched -> {
                 val ctx = RouteContext(match.pathParams, parseQuery(exchange.requestURI.rawQuery), exchange)
-                guarded(method, path) { match.handler(ctx) }
+                respondJson(exchange, guarded(method, path) { match.handler(ctx) })
             }
         }
-        respond(exchange, result)
     }
 
     private fun guarded(method: String, path: String, block: () -> ApiResult<String>): ApiResult<String> = try {
@@ -120,7 +141,14 @@ class Router {
         Err(500, "INTERNAL_ERROR", "Unexpected server error")
     }
 
-    private fun respond(exchange: HttpExchange, result: ApiResult<String>) {
+    private fun guardedStatic(method: String, path: String, block: () -> StaticResult): StaticResult = try {
+        block()
+    } catch (e: Exception) {
+        logger.log(Level.SEVERE, "unhandled exception serving static file for $method $path", e)
+        StaticFailed(Err(500, "INTERNAL_ERROR", "Unexpected server error"))
+    }
+
+    private fun respondJson(exchange: HttpExchange, result: ApiResult<String>) {
         val status: Int
         val body: String
         when (result) {
@@ -137,5 +165,16 @@ class Router {
         exchange.responseHeaders.add("Content-Type", "application/json; charset=utf-8")
         exchange.sendResponseHeaders(status, bytes.size.toLong())
         exchange.responseBody.write(bytes)
+    }
+
+    private fun respondStatic(exchange: HttpExchange, result: StaticResult) {
+        when (result) {
+            is StaticFailed -> respondJson(exchange, result.err)
+            is StaticFile -> {
+                exchange.responseHeaders.add("Content-Type", result.contentType)
+                exchange.sendResponseHeaders(200, result.body.size.toLong())
+                exchange.responseBody.write(result.body)
+            }
+        }
     }
 }

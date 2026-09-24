@@ -1,0 +1,6 @@
+<!-- An open book silhouette (a recipe book), filled in the accent color directly since a
+     favicon can't reach CSS custom properties -- same constraint and approach as shelf's own
+     favicon.svg. Keep in sync by hand with the accent color in style.css if it ever changes. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M12 5c-1.8-1.3-5-1.7-8-1v14c3-.7 6.2-.3 8 1 1.8-1.3 5-1.7 8-1V4c-3-.7-6.2-.3-8 1Z" fill="#5E7A32"/>
+</svg>

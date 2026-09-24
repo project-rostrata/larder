@@ -1,0 +1,54 @@
+# From the repo root: docker compose -f docker/docker-compose.yml up --build
+# LARDER_DB_PASSWORD/LARDER_PORT below default to throwaway local-dev values — override them
+# (e.g. via a docker/.env file) for anything beyond that.
+#
+# Only two services: postgres (the one piece of state, official image, no build) and app (the
+# single image this repo builds -- backend, frontend, and the ingredient-parser sidecar all
+# bundled together, see docker/Dockerfile). Unlike shelf, there's no bind-mounted storage volume
+# or PUID/PGID entrypoint dance -- larder has no user-content file I/O at all, Postgres is the
+# only state (PROJECT_BRIEF.md section 4 / AGENTS.md).
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_USER: larder
+      POSTGRES_PASSWORD: ${LARDER_DB_PASSWORD:-devpassword}
+      POSTGRES_DB: larder
+    volumes:
+      # Postgres 18+'s official image stores data in a major-version-named subdirectory under
+      # /var/lib/postgresql itself, not .../data -- mount the parent. Same as shelf's compose
+      # file; see https://github.com/docker-library/postgres/pull/1259
+      - larder-postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U larder"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      LARDER_PORT: 8080
+      LARDER_DB_URL: jdbc:postgresql://postgres:5432/larder
+      LARDER_DB_USER: larder
+      LARDER_DB_PASSWORD: ${LARDER_DB_PASSWORD:-devpassword}
+      LARDER_MIGRATIONS_DIR: /app/db/migrations
+      LARDER_FRONTEND_DIR: /app/frontend
+      LARDER_SESSION_DURATION_HOURS: ${LARDER_SESSION_DURATION_HOURS:-720}
+      # Real deployments MUST override this to true -- see docs/decisions.md. False here only
+      # because local dev over plain HTTP needs it off.
+      LARDER_SECURE_COOKIES: ${LARDER_SECURE_COOKIES:-false}
+      LARDER_DB_POOL_SIZE: ${LARDER_DB_POOL_SIZE:-10}
+      # Loopback -- the sidecar is bundled into this same container/image, not a separate
+      # compose service, so it's never published as its own port here either.
+      LARDER_INGREDIENT_PARSER_URL: http://127.0.0.1:8000
+    ports:
+      - "${LARDER_PORT:-8080}:8080"
+
+volumes:
+  larder-postgres-data:

@@ -11,6 +11,7 @@ import larder.api.RecipeUpdateHandler
 import larder.api.RecipesListHandler
 import larder.api.RegisterHandler
 import larder.api.Router
+import larder.api.StaticFileHandler
 import larder.api.VersionHandler
 import larder.api.healthHandler
 import larder.api.requireAuth
@@ -42,6 +43,7 @@ fun main() {
     val migrationsDir = System.getenv("LARDER_MIGRATIONS_DIR") ?: error("LARDER_MIGRATIONS_DIR is required")
     val ingredientParserUrl = System.getenv("LARDER_INGREDIENT_PARSER_URL")
         ?: error("LARDER_INGREDIENT_PARSER_URL is required")
+    val frontendDir = System.getenv("LARDER_FRONTEND_DIR") ?: error("LARDER_FRONTEND_DIR is required")
     // Default comfortably covers the HTTP server's 8-thread executor below, with headroom —
     // same rationale as shelf's identical default.
     val dbPoolSize = (System.getenv("LARDER_DB_POOL_SIZE") ?: "10").toInt()
@@ -75,6 +77,7 @@ fun main() {
     val recipeDeleteHandler = RecipeDeleteHandler(recipes)
     val recipeImportHandler = RecipeImportHandler(recipes, ingredientParser, ingredientResolver)
     val ingredientMergeHandler = IngredientMergeHandler(ingredients)
+    val staticFileHandler = StaticFileHandler(Path.of(frontendDir))
 
     val router = Router()
     router.get("/api/health", ::healthHandler)
@@ -93,6 +96,7 @@ fun main() {
         "/api/ingredients/:id/merge-into/:targetId",
         requireAuth(sessions, users, ingredientMergeHandler::handle),
     )
+    router.serveStatic(staticFileHandler::serve)
 
     val server = HttpServer.create(InetSocketAddress(port), 0)
     server.executor = Executors.newFixedThreadPool(8)

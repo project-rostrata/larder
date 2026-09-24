@@ -15,7 +15,8 @@ CP="$OUT_DIR:$LIB_DIR/postgresql-42.7.13.jar:$LIB_DIR/kotlinx-serialization-core
 # reachable by service name, not localhost, once Phase 10 wires it in).
 : "${LARDER_MIGRATIONS_DIR:=../db/migrations}"
 : "${LARDER_INGREDIENT_PARSER_URL:=http://localhost:8000}"
-export LARDER_MIGRATIONS_DIR LARDER_INGREDIENT_PARSER_URL
+: "${LARDER_FRONTEND_DIR:=../frontend}"
+export LARDER_MIGRATIONS_DIR LARDER_INGREDIENT_PARSER_URL LARDER_FRONTEND_DIR
 
 java \
   -cp "$CP" \

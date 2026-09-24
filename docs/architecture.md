@@ -76,23 +76,72 @@ rejects loopback and cloud-metadata addresses and a bad scheme (400), a reachabl
 Recipe JSON-LD returns 422, and a malformed request body returns 400 — all through the real
 HTTP API, not just unit tests.
 
+**Phase 9a (frontend: auth + recipe views) is done.** A VanJS UI now exists in `frontend/` —
+see its own section under Repo layout. `Router.kt` gained `serveStatic()`/`StaticResult`, and a
+new `api/StaticFileHandler.kt` serves it: unmatched GET requests outside `/api/` fall through to
+the frontend directory (`LARDER_FRONTEND_DIR`, a new required env var), everything under
+`/api/` is untouched. Verified live: started a real `postgres:18.6-alpine` container, the real
+`ingredient-parser` sidecar image, and the compiled backend pointed at the real `frontend/`
+directory; confirmed every static asset serves with the right content-type (`index.html`,
+`app.js`, every `src/**/*.js`, `lib/van-1.6.1.js`, `style.css`, `favicon.svg`), a non-existent
+path 404s rather than silently falling back to `index.html`, and `/api/health` still routes to
+the API rather than being swallowed by the static fallback. Exercised the full recipe lifecycle
+the UI drives through the real HTTP API — register, create (ingredients routed through the real
+sidecar: `"2 large eggs"` correctly stripped its size word from the ingredient name, `"2 cups
+flour, sifted, divided"` correctly captured its multi-clause notes), list, tag-filter, get,
+`PUT`-replace, soft-delete, confirming the list excludes a deleted recipe while direct-fetch
+still resolves it (`RecipeGetHandler`'s documented does-not-filter-`deleted_at` behavior).
+Every frontend `.js` file passed a `node --check` syntax pass. **Not verified in an actual
+rendered browser** — no headless-browser tooling (Playwright/jsdom/Selenium) was available in
+this environment and installing one wasn't requested, so the reactive VanJS wiring (the
+`display:contents` grid-children pattern in particular) was verified by hand-tracing VanJS's
+dependency-tracking semantics and by reading the vendored source directly, not by watching it
+render. Two real issues were caught and fixed before shipping: `RecipeList.js`'s `Grid()`
+originally wrapped card children in a plain `<div>`, which would have broken the CSS Grid layout
+(the wrapper becomes the grid item, not each card) — fixed with a `display:contents` wrapper, the
+same fix applied in `RecipeForm.js`'s `DynamicRows()`; and `RecipeList()` was calling
+`refreshRecipeList()` itself even though `router.js`'s `navigate()`/`applyUrlToState()` already
+triggers it on every navigation to that view, causing a redundant double-fetch on every visit —
+removed, view components now only render state, `router.js` owns loading it.
+
+**Phase 10 (Docker packaging) is done.** `docker/Dockerfile`, `docker/entrypoint.sh`, and
+`docker/docker-compose.yml` now exist — see their own section under Repo layout for what each
+does, and `docs/decisions.md` for why this bundles the `ingredient-parser` sidecar into the
+app's own image rather than running it as a separate compose service (a human-directed
+deviation from this plan's original sketch, not a default the app chose on its own). Verified
+live: `docker compose -f docker/docker-compose.yml up --build` brought up a real two-container
+stack (the bundled app image + Postgres); confirmed migrations apply automatically on first
+start, the frontend and API both serve correctly, and a real recipe create routes through the
+bundled sidecar over loopback with the same parsing behavior already verified in Phase 9a;
+killed the sidecar's process inside the running container and confirmed the container stayed up,
+`/api/health` kept responding, and a subsequent create correctly degraded to an all-null
+unresolved ingredient rather than erroring (this is `entrypoint.sh`'s deliberate divergence from
+`shelf`'s multi-process entrypoint pattern — only the app's own exit ends the container, not the
+sidecar's, see `docs/decisions.md`); confirmed a clean `docker stop` exits promptly (code 143,
+the normal SIGTERM result) with no forced kill needed.
+
 ## System shape
 
 ```
-Browser (VanJS UI — not yet built, Phase 9)
+Browser (VanJS UI, frontend/ — auth + recipe views done, Phase 9a; meal planner/shopping
+          list views not yet built, Phase 9b)
       |
       v
-App server (Kotlin, JDK stdlib HTTP, REST/JSON API)
+App server (Kotlin, JDK stdlib HTTP, REST/JSON API + static file serving)
       |                       |
       v                       v
-  Postgres (source of truth   Ingredient-parser sidecar (Python, ingredient-parser/)
-   for everything)
+  Postgres (source of truth   Ingredient-parser sidecar (Python, ingredient-parser/) — bundled
+   for everything,             into the SAME container/image as the app server as of Phase 10,
+   separate container)         reachable only over loopback, not a separate compose service
 ```
 
-Full rationale in `PROJECT_BRIEF.md` §3–4. Both arrows are real now — recipe creation/update
-calls the sidecar, confirmed live. `docker-compose.yml` doesn't run the two services together
-as one deployment yet, though (Phase 10) — Phase 5's verification pointed the app at the
-sidecar's host-mapped port directly, not through a Compose network.
+Full rationale in `PROJECT_BRIEF.md` §3–4. All three arrows are real now — recipe creation/
+update calls the sidecar, confirmed live, and the browser is served the real UI by the same app
+server rather than a separate static host. As of Phase 10, `docker/docker-compose.yml` runs the
+whole thing as two containers: `app` (backend + frontend + sidecar, one built image) and
+`postgres` (official image, named volume) — see `docs/decisions.md` for why the sidecar is
+bundled into the app's image rather than run as its own compose service, a deliberate deviation
+from this plan's original sketch made at the human's explicit direction.
 
 ## Repo layout
 
@@ -109,10 +158,14 @@ larder/
         AuthConfig.kt             session duration + secure-cookies flag, passed into handlers
       api/
         Router.kt              hand-rolled router: method+path matching, :param segments,
-                                 .get/.post/.put/.delete (JSON only — no streaming/static-file
-                                 serving yet, unlike shelf's Router; added when Phase 9
-                                 actually needs it). put() added Phase 5 — PUT /api/recipes/{id}
-                                 was the first route that needed it
+                                 .get/.post/.put/.delete for JSON routes. put() added Phase 5 —
+                                 PUT /api/recipes/{id} was the first route that needed it.
+                                 serveStatic() added Phase 9a — unmatched GET requests outside
+                                 /api/ fall through to it instead of 404ing
+        StaticFileHandler.kt     Phase 9a — serves LARDER_FRONTEND_DIR; simpler than shelf's
+                                  equivalent since larder has no per-user filesystem content to
+                                  path-safety-guard against, just a fixed set of app files (still
+                                  canonicalizes + checks containment defensively)
         ApiResult.kt            sealed Ok/Err result type + the fixed JSON error envelope
         Cookies.kt                parse Cookie header / build Set-Cookie (larder_session)
         Auth.kt                    requireAuth() middleware — resolves the full
@@ -224,7 +277,51 @@ larder/
                                  ../db/migrations for local dev
     test.sh                    compiles src/+test/, runs TestMain -- hermetic tests only, see
                                  docs/decisions.md for why DB/network-touching code isn't here
-  frontend/                    empty — Phase 9
+  frontend/                    Phase 9a — vendored van.js, no bundler; served by
+                                 StaticFileHandler, not a separate static host
+    index.html                   single entry point; every view lives at path / (query-param
+                                   routing, see src/router.js)
+    app.js                        entry point: mounts Root(), which switches on
+                                   state.authChecked/state.user/state.view — same shape as
+                                   shelf's own app.js Root()
+    style.css                     shelf's exact design tokens/component classes, plus
+                                    recipe-specific ones (card grid, detail, form, dynamic rows)
+    favicon.svg                   larder's own open-book icon (shelf's single-filled-path
+                                    favicon pattern, larder's own design)
+    lib/van-1.6.1.js               vendored verbatim from shelf
+    src/
+      state.js                       top-level van.state() values, no store/reducer abstraction
+      api.js                          fetch wrapper, one function per endpoint (Phase 1/3/5/6
+                                        API only — nothing for Phase 7/8 yet)
+      router.js                       query-param routing (?view=&id=&tag=), matching shelf's
+                                        own router.js pattern exactly (explicit human choice);
+                                        navigate()/applyUrlToState() own triggering data loads,
+                                        views only render state
+      recipes.js                      refreshRecipeList()/loadRecipe() — the data-loading
+                                        functions router.js calls into
+      format.js                       formatMinutes() only — no fraction formatter, ingredients
+                                        display as raw_text, not a reconstructed sentence
+      icons.js                        minimal inline-SVG icon set, same icon() helper as shelf
+      vanHelpers.js                   emptyNode(), ported from shelf (verified against the
+                                        vendored van.js source that it still safely no-ops)
+      components/
+        TopBar.js                       reused across every logged-in view (list/detail/form),
+                                          unlike shelf's, which only ever appeared in one view
+        Toast.js                        direct port
+        ImportDialog.js                  adapted from shelf's MkdirDialog.js pattern
+        ConfirmDialog.js                 new — generic confirm/cancel modal; shelf had no
+                                           equivalent since its dialogs were all task-specific
+        DialogHost.js                    dispatches state.activeDialog to the right dialog
+        RecipeCard.js                     used by the recipe-list card grid
+      views/
+        Login.js / Register.js            adapted from shelf's near-identical originals
+        RecipeList.js                      card grid (explicit human choice over a table),
+                                             debounced tag filter, import/new actions
+        RecipeDetail.js                    raw_text ingredient display, numbered instructions,
+                                             edit/delete actions
+        RecipeForm.js                      shared create/edit form: scalar fields + dynamic
+                                             ingredient/instruction rows (display:contents
+                                             wrapper, same pattern as RecipeList's card grid)
   db/
     migrations/
       0001_initial_schema.sql   all v1 tables, indexes, and constraints (PROJECT_BRIEF.md §7)
@@ -239,8 +336,26 @@ larder/
     test_app.py                     pytest, real HTTP requests against a real running
                                       instance, covering the specific failure modes that
                                       motivated this over a regex parser
-  docker/                      empty — Phase 10 (will need to wire ingredient-parser in too,
-                                once Phase 4b exists)
+  docker/                      Phase 10
+    Dockerfile                   two-stage build: stage 1 compiles the Kotlin backend
+                                   (eclipse-temurin JDK Alpine, pinned kotlinc, same pattern as
+                                   shelf); stage 2 is the runtime, python:3.12-slim (glibc, same
+                                   base ingredient-parser/Dockerfile already verified) +
+                                   openjdk-21-jre-headless added via apt, bundling the compiled
+                                   backend, frontend/, and the sidecar all into one image — a
+                                   deliberate deviation from this plan's original separate-
+                                   service sketch, see docs/decisions.md
+    entrypoint.sh                 starts the sidecar and the app as two direct child processes,
+                                    no supervisor dependency; only the app's own exit ends the
+                                    container, not the sidecar's (verified live: killing the
+                                    sidecar leaves the container running and the app serving,
+                                    degrading gracefully) — deliberately diverges from shelf's
+                                    standalone-entrypoint.sh precedent on this one point, see
+                                    docs/decisions.md
+    docker-compose.yml             app service (builds the Dockerfile above) + postgres service
+                                     (official image, named volume); no PUID/PGID handling, no
+                                     bind-mounted storage volume — no user-facing filesystem
+                                     content exists to manage
 ```
 
 ## Dependencies in use
@@ -254,6 +369,10 @@ on bare `kotlinc`, no Gradle.
 "new runtime/service" policy)**: `ingredient-parser-nlp==2.8.0` and its own
 `nltk==3.10.3`/`numpy==2.5.3`/`pint==0.26.1`, exact-pinned in `ingredient-parser/requirements.txt`.
 No Flask or other web framework — stdlib `http.server`.
+
+**Frontend**: zero package-manager dependencies — `van.js` 1.6.1 is vendored verbatim into
+`frontend/lib/`, same as `shelf`'s frontend. No bundler, no npm, no build step; the browser
+loads `app.js` and its imports as native ES modules directly.
 
 ## Configuration
 
@@ -269,7 +388,8 @@ Read from environment variables at startup (`Main.kt`), no config file:
 | `LARDER_MIGRATIONS_DIR` | yes | — (`run.sh` defaults it to `../db/migrations` for local dev) |
 | `LARDER_SESSION_DURATION_HOURS` | no | `720` (30 days) |
 | `LARDER_SECURE_COOKIES` | no | `false` (real deployments must override to `true`; local HTTP dev needs it off) |
-| `LARDER_INGREDIENT_PARSER_URL` | yes | — (`run.sh` defaults it to `http://localhost:8000` for local dev; Compose will point it at the sidecar's service name instead, Phase 10) |
+| `LARDER_INGREDIENT_PARSER_URL` | yes | — (`run.sh` defaults it to `http://localhost:8000` for local dev; the Docker image defaults it to `http://127.0.0.1:8000` since the sidecar is bundled into the same container as of Phase 10) |
+| `LARDER_FRONTEND_DIR` | yes | — (`run.sh` defaults it to `../frontend` for local dev) |
 
 `ingredient-parser/` has its own separate, small config surface — see its own README.md
 (currently just `INGREDIENT_PARSER_PORT`, default `8000`). Not part of the table above; it's a
@@ -277,6 +397,5 @@ different process with its own env-var namespace.
 
 ## Not built yet
 
-Everything past Phase 6: meal planning, shopping-list generation, the frontend, and Docker
-packaging (including wiring `ingredient-parser` into `docker-compose.yml`). See `V1_PLAN.md`
-for the phase order.
+Phase 7 (meal planning), Phase 8 (shopping-list generation), and Phase 9b (their frontend
+views). See `V1_PLAN.md` for the phase order.

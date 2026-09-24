@@ -41,18 +41,33 @@ are built the way they are, not just what was built.
 Not planned for v1, deliberately: images, recipe search, sharing, nutrition info — see
 [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) §5–6 for what's deferred and why.
 
-**Status: early build.** Phases 0–6 of [`V1_PLAN.md`](V1_PLAN.md) are done — a backend skeleton,
-the full database schema, auth (register/login/logout), a standalone Python ingredient-parser
-sidecar (see [`ingredient-parser/README.md`](ingredient-parser/README.md)), recipe CRUD with
-ingredient-line parsing wired all the way through, and recipe import from a URL (schema.org
-JSON-LD, verified against a real live recipe page). No meal planning or shopping lists yet, and
-no frontend — see [`docs/architecture.md`](docs/architecture.md) for what's actually built
-right now.
+**Status: early build.** Phases 0–6, 9a, and 10 of [`V1_PLAN.md`](V1_PLAN.md) are done — a
+backend skeleton, the full database schema, auth (register/login/logout), a standalone Python
+ingredient-parser sidecar (see [`ingredient-parser/README.md`](ingredient-parser/README.md)),
+recipe CRUD with ingredient-line parsing wired all the way through, recipe import from a URL
+(schema.org JSON-LD, verified against a real live recipe page), a VanJS frontend for
+auth/recipe browsing/creating/editing, and Docker packaging (one built image bundling the
+backend, frontend, and sidecar together, plus a `docker-compose.yml` with Postgres). No meal
+planning or shopping lists yet, and no frontend for them either (Phase 9b) — see
+[`docs/architecture.md`](docs/architecture.md) for what's actually built right now.
 
 ## Quick start
 
-No Docker/frontend yet — those land in later phases. To run the backend against a local
-Postgres:
+### Docker (recommended)
+
+```
+docker compose -f docker/docker-compose.yml up --build
+```
+
+Brings up two containers: `app` (backend + frontend + ingredient-parser sidecar, all one built
+image — see [`docker/README.md`](docker/README.md)) and `postgres`. Visit
+`http://localhost:8080/`. Override `LARDER_DB_PASSWORD`/`LARDER_PORT`/etc. via a `docker/.env`
+file or the shell environment; see `docker/docker-compose.yml` for the full list.
+
+### Bare metal
+
+To run the backend (which also serves the frontend) directly against a local Postgres and a
+separately-running sidecar:
 
 ```
 cd backend
@@ -64,11 +79,13 @@ LARDER_DB_PASSWORD=... \
   ./run.sh
 ```
 
-Port 8080 by default. Routes so far: `GET /api/health`, `GET /api/version`,
-`POST /api/register`, `POST /api/login`, `POST /api/logout`, `GET /api/me`,
-`GET /api/recipes`, `GET/POST/PUT/DELETE /api/recipes/{id}` (POST for create is on the
-collection route, not `{id}`), `POST /api/recipes/import`,
-`POST /api/ingredients/{id}/merge-into/{targetId}`.
+Port 8080 by default; visit `http://localhost:8080/` for the UI. Routes so far:
+`GET /api/health`, `GET /api/version`, `POST /api/register`, `POST /api/login`,
+`POST /api/logout`, `GET /api/me`, `GET /api/recipes`,
+`GET/POST/PUT/DELETE /api/recipes/{id}` (POST for create is on the collection route, not
+`{id}`), `POST /api/recipes/import`, `POST /api/ingredients/{id}/merge-into/{targetId}`. Any
+other `GET` outside `/api/` serves the frontend from `LARDER_FRONTEND_DIR` (defaults to
+`../frontend` via `run.sh`).
 
 Also needs `LARDER_INGREDIENT_PARSER_URL` pointing at a running
 [`ingredient-parser`](ingredient-parser/README.md) instance (defaults to

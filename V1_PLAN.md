@@ -288,25 +288,57 @@ data, not a cache of something else.
 
 ## Phase 9 — Frontend (VanJS)
 
-- Vendor `van.js`, no bundler — same as `shelf`.
-- Views: login/register, recipe list (tag filter) + recipe detail/edit, import-from-URL form,
-  meal planner (calendar-ish date/slot grid), shopping list view (checkable items, manual add).
-- Plain `fetch` calls to the Phase 1/3/5/6/7/8 API. Responsive layout.
-- Two things the backend already supports but this phase doesn't need to design yet (brief
+Split into two stages like Phase 4 — 9a (done, this pass) covers everything the Phase 1/3/5/6
+API already supports; 9b (placeholder, content TBD) covers the meal planner and shopping list
+views once Phases 7/8 land. No document-wide renumbering — later phases keep their numbers.
+
+### Phase 9a — Auth + recipe views (done)
+
+- Vendored `van.js` 1.6.1, no bundler — same as `shelf`.
+- Query-param client-side routing (`?view=...&id=...&tag=...`) on the single `/` route,
+  matching `shelf`'s own `router.js` pattern exactly (explicit human choice) — no SPA-fallback
+  logic needed in the static file server since every view lives at path `/`.
+- New `StaticFileHandler`/`Router.serveStatic()` on the Kotlin side: unmatched GET requests
+  outside `/api/` fall through to serving `LARDER_FRONTEND_DIR` (new required env var).
+- Views built: `Login`/`Register` (adapted from `shelf`'s near-identical originals, wordmark/
+  copy changed only), `RecipeList` (card grid, not a table — explicit human choice; debounced
+  tag-filter input, import-from-URL and new-recipe actions), `RecipeDetail` (raw_text ingredient
+  display per the brief's "what you typed/imported is what you see" principle, numbered
+  instructions, edit/delete actions), `RecipeForm` (shared create/edit: scalar fields, dynamic
+  ingredient/instruction rows, comma-separated tags input).
+- Shared components: `TopBar`, `Toast`, `ImportDialog` (adapted from `shelf`'s `MkdirDialog`
+  pattern), `ConfirmDialog` (new — a generic confirm/cancel modal `shelf` had no equivalent of,
+  since all its dialogs were task-specific), `DialogHost` (dispatches on `state.activeDialog`).
+- Plain `fetch` calls to the Phase 1/3/5/6 API only — Phase 9a doesn't touch meal planning or
+  shopping lists, since those endpoints don't exist yet.
+- Two things the backend already supports but this stage doesn't design a UI for (brief
   section 5, both explicitly deferred): surfacing whether a recipe's ingredients matched a
-  known ingredient or got auto-created, and a UI for Phase 8's manual item-merge endpoint. Build
-  the v1 views without them; both are a later, separate pass once there's a UX design to build
-  against.
+  known ingredient or got auto-created, and interactive servings-scaling. Both are a later,
+  separate pass once there's a UX design to build against.
 
-## Phase 10 — Docker
+### Phase 9b — Meal planner + shopping list views (placeholder, not started)
 
-- `Dockerfile`: build stage runs `backend/build.sh` explicitly (same "no hidden build-tool
-  magic" pattern as `shelf`, for as long as the project stays on bare `kotlinc` — revisit this
-  phase's text if Phase 6 or later triggers a move to Gradle); runtime stage copies compiled
-  output + dependency jars.
-- `docker-compose.yml`: app service, Postgres service (data via a named volume), optional
-  reverse-proxy service. **No bind-mounted storage volume, no `PUID`/`PGID` entrypoint** — see
-  brief section 8; there's no user-facing filesystem content to manage.
+- Meal planner (calendar-ish date/slot grid), shopping list view (checkable items, manual add,
+  a UI for Phase 8's manual item-merge endpoint). Depends on Phases 7 and 8 existing first.
+
+## Phase 10 — Docker (done)
+
+- `docker/Dockerfile`: two-stage build. Stage 1 runs `backend/build.sh` explicitly (same "no
+  hidden build-tool magic" pattern as `shelf`, still on bare `kotlinc`), on
+  `eclipse-temurin:25.0.4_7-jdk-alpine`. Stage 2 is the runtime — **diverges from this plan's
+  original sketch**: rather than a separate `ingredient-parser` service/image, the human asked
+  for a single deployable image, so the runtime stage bundles the compiled backend, the
+  frontend, and the Python sidecar together, based on `python:3.12-slim` (glibc, matching
+  `ingredient-parser/Dockerfile`'s own already-verified base — Alpine/musl would force
+  `numpy`/`regex` to compile from source instead of installing manylinux wheels) with
+  `openjdk-21-jre-headless` added via `apt`.
+- `docker/entrypoint.sh`: starts the sidecar and the app as two direct child processes (no
+  supervisor dependency), with the app's own exit — not the sidecar's — ending the container;
+  see `docs/decisions.md` for the reasoning.
+- `docker/docker-compose.yml`: `app` service (built from the Dockerfile above) + `postgres`
+  service (official image, data via a named volume). **No bind-mounted storage volume, no
+  `PUID`/`PGID` entrypoint** — see brief section 8; there's no user-facing filesystem content to
+  manage. No reverse-proxy service — not asked for.
 
 ## Phase 11 — Hardening pass before calling v1 done
 

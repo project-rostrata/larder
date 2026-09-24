@@ -24,7 +24,13 @@ function Toolbar() {
     input({
       class: "tag-filter-input",
       placeholder: "Filter by tag…",
-      value: state.tagFilter.val,
+      // Pass the State object itself, not .val -- van.js then wraps this one attribute in its
+      // own isolated binding (see van.js's tag(): protoOf(v) === stateProto triggers a nested
+      // bind()). Reading .val directly here would instead attribute the dependency to whichever
+      // ancestor reactive binding is running Toolbar()'s construction -- app.js's top-level
+      // Root() binding, in this app -- causing the ENTIRE app to re-render on every tag-filter
+      // navigation. See docs/decisions.md for the full writeup (same bug hit in RecipeForm.js).
+      value: state.tagFilter,
       oninput: onTagInput,
     }),
     div(

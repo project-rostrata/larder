@@ -122,20 +122,20 @@ function buildForm(initial, { submitLabel, onSubmit }) {
   return form(
     { class: "recipe-form", onsubmit: submit },
     h1({ class: "recipe-detail-title" }, initial.title ? `Edit ${initial.title}` : "New recipe"),
-    Field("Title", { id: "title", value: title.val, oninput: (e) => { title.val = e.target.value; } }),
-    Field("Source URL", { id: "sourceUrl", type: "url", value: sourceUrl.val, oninput: (e) => { sourceUrl.val = e.target.value; } }),
+    Field("Title", { id: "title", value: title, oninput: (e) => { title.val = e.target.value; } }),
+    Field("Source URL", { id: "sourceUrl", type: "url", value: sourceUrl, oninput: (e) => { sourceUrl.val = e.target.value; } }),
     div(
       { class: "form-row" },
-      Field("Servings", { id: "servings", type: "number", min: "0", value: servings.val, oninput: (e) => { servings.val = e.target.value; } }),
-      Field("Servings (text)", { id: "servingsText", placeholder: "e.g. 4-6", value: servingsText.val, oninput: (e) => { servingsText.val = e.target.value; } }),
+      Field("Servings", { id: "servings", type: "number", min: "0", value: servings, oninput: (e) => { servings.val = e.target.value; } }),
+      Field("Servings (text)", { id: "servingsText", placeholder: "e.g. 4-6", value: servingsText, oninput: (e) => { servingsText.val = e.target.value; } }),
     ),
     div(
       { class: "form-row" },
-      Field("Prep (min)", { id: "prepTimeMinutes", type: "number", min: "0", value: prepTimeMinutes.val, oninput: (e) => { prepTimeMinutes.val = e.target.value; } }),
-      Field("Cook (min)", { id: "cookTimeMinutes", type: "number", min: "0", value: cookTimeMinutes.val, oninput: (e) => { cookTimeMinutes.val = e.target.value; } }),
-      Field("Total (min)", { id: "totalTimeMinutes", type: "number", min: "0", value: totalTimeMinutes.val, oninput: (e) => { totalTimeMinutes.val = e.target.value; } }),
+      Field("Prep (min)", { id: "prepTimeMinutes", type: "number", min: "0", value: prepTimeMinutes, oninput: (e) => { prepTimeMinutes.val = e.target.value; } }),
+      Field("Cook (min)", { id: "cookTimeMinutes", type: "number", min: "0", value: cookTimeMinutes, oninput: (e) => { cookTimeMinutes.val = e.target.value; } }),
+      Field("Total (min)", { id: "totalTimeMinutes", type: "number", min: "0", value: totalTimeMinutes, oninput: (e) => { totalTimeMinutes.val = e.target.value; } }),
     ),
-    Field("Tags", { id: "tags", placeholder: "comma, separated", value: tags.val, oninput: (e) => { tags.val = e.target.value; } }),
+    Field("Tags", { id: "tags", placeholder: "comma, separated", value: tags, oninput: (e) => { tags.val = e.target.value; } }),
     DynamicRows({ labelText: "Ingredients", rows: ingredientRows, addLabel: "Add ingredient", multiline: false }),
     DynamicRows({ labelText: "Instructions", rows: instructionRows, addLabel: "Add step", multiline: true }),
     div(

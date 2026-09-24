@@ -506,3 +506,48 @@ over loopback inside the container (confirmed via real ingredient parsing throug
 create-recipe flow — the same size-word-stripping and multi-clause-notes behavior already
 verified in Phase 9a), and Postgres migrations apply automatically on first start via the
 existing `healthcheck`-gated `depends_on` ordering.
+
+## Bug fix: recipe form fields weren't editable — reading `.val` as a prop value taints the wrong van.js binding
+
+**Reported by the human after trying the real UI**: on the recipe create/edit form, the title
+and other text fields couldn't be typed into. Root cause, confirmed by reading `van.js`'s
+source directly (not guessed): its dependency tracker (`stateProto`'s `get val()`) records a
+`.val` read against whatever binding function is *currently executing*, unconditionally,
+regardless of how deep in the call stack that read happens — `curDeps?._getters?.add(this)` has
+no notion of "this state was created inside the function I'm now calling," only "was a binding
+function active when this getter ran." `RecipeForm.js`'s `buildForm()` read
+`value: title.val` (and the same for every other scalar field) directly, as a bare expression,
+while itself being invoked synchronously from inside `RecipeForm()`'s own `() => {...}` binding
+— so `title` (a `van.state()` freshly created *inside* `buildForm()`, never exposed outside it)
+got silently recorded as a dependency of that *outer* binding. Every keystroke's `oninput`
+handler then wrote `title.val = ...`, which retriggered the outer binding, which called
+`buildForm()` again from scratch — creating a brand-new `title` state reset to its original
+initial value and replacing the whole form's DOM subtree. That's what "not editable" actually
+was: each character appeared to vanish because the entire form was silently rebuilt out from
+under the user on every single keystroke.
+
+The same pattern existed in `RecipeList.js`'s `Toolbar()` (`value: state.tagFilter.val`), one
+level up — since `Toolbar()` is constructed from inside `app.js`'s top-level `Root()` binding,
+that read would have tainted `Root()` itself, remounting the *entire app* on every debounced
+tag-filter navigation, not just the input.
+
+**Fix**: `tag()`'s own prop-handling logic (also read directly, not inferred) already has a
+principled way to bind a specific attribute reactively *without* tainting the enclosing scope —
+pass the `State` object itself as the prop value (`value: title`, not `value: title.val`), which
+`tag()` detects (`protoOf(v) === stateProto`) and wraps in its own dedicated, isolated `bind()`
+call for just that one attribute. Every scalar-field `value:` prop in `RecipeForm.js` and the
+tag-filter input in `RecipeList.js` were changed from `.val` reads to bare state references.
+This is also a strictly better fix than "downgrade to a plain uncontrolled variable" would have
+been, since it keeps the fields genuinely reactive if `state.tagFilter` (or a form field) is
+ever driven from outside the input itself.
+
+**Verified with a real reproduction, not just source-reading**: built a minimal headless DOM
+stub (`document.createElement`, a fake element with a real `value` property setter,
+`appendChild`/`replaceWith`, event listeners) and imported the *actual* `van.js` and
+`RecipeForm.js` modules against it in Node — mounted a real `RecipeForm()`, fired real `input`
+events one keystroke at a time with a `queueMicrotask` flush between each (matching `van.js`'s
+own async DOM-update scheduling), and asserted both that the title `<input>` DOM node identity
+stayed the same across keystrokes and that its value accumulated correctly. Confirmed this
+reproduction actually fails against the pre-fix code (the input got replaced on the very first
+keystroke and its value reset to `""`, exactly matching the reported symptom) and passes against
+the fix — not a test that happened to pass either way.

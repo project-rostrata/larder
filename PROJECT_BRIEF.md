@@ -185,21 +185,22 @@ shopping-list combination and recipe scaling. Findings, and what larder does wit
   `units` rather than a child table — `ingredient_aliases` stays a full child table because
   that vocabulary is open-ended and grows from user curation over time.
 
-**Recipe URL import: schema.org JSON-LD, no HTML-parsing library in v1.** Fetch the page with
-`java.net.http.HttpClient` (already in the JDK — zero new dependency), extract
-`<script type="application/ld+json">` blocks with a regex, and parse each with
-`kotlinx.serialization.json` looking for an object whose `@type` contains `"Recipe"` (directly,
-or nested inside an `@graph` array — both are common). This covers the large majority of recipe
-sites today, since nearly every recipe SEO plugin/CMS emits schema.org JSON-LD for search-engine
-rich results. Sites with no structured data at all are out of scope for automatic import in
-v1 — the recipe can still be entered by hand. Confirmed directly against the `recipe-scrapers`
-library's source during this research pass: schema.org's `recipeIngredient` is always a list of
-raw, unparsed strings — no site or scraping library hands over structured quantity/unit/name,
-so larder's own ingredient-line parser (below) is load-bearing for every import, not just a
-fallback. **If JSON-LD proves too lossy in practice** (e.g. sites that only emit the older
-`itemprop` microdata format, which needs a real DOM to extract reliably), a proper HTML parser
-library (e.g. `jsoup`) is the anticipated next step — flagged here as an expected future
-dependency request per section 2's policy, not pre-approved.
+**Recipe URL import: schema.org JSON-LD, no HTML-parsing library — confirmed sufficient, not
+just assumed.** Fetch the page with `java.net.http.HttpClient` (already in the JDK — zero new
+dependency), extract `<script type="application/ld+json">` blocks with a regex, and parse each
+with `kotlinx.serialization.json` looking for an object whose `@type` contains `"Recipe"`
+(directly, inside a top-level array, or nested inside an `@graph` array — all three occur on
+real sites). Confirmed directly against the `recipe-scrapers` library's source during the
+original research pass: schema.org's `recipeIngredient` is always a list of raw, unparsed
+strings — no site or scraping library hands over structured quantity/unit/name, so larder's own
+ingredient-line parser (above) is load-bearing for every import, not just a fallback. **Phase 6
+tested this against a real, live recipe page** (not just synthetic fixtures) and it worked
+end to end — fetched, extracted, parsed every ingredient line through the real sidecar, and
+persisted correctly, messy real-world whitespace and all. Sites with no structured data at all
+remain out of scope for automatic import — the recipe can still be entered by hand. **The
+anticipated `jsoup` contingency (flagged when this brief was first written, for sites only
+emitting the older `itemprop` microdata format) has not been needed** — not proposed, not
+added; revisit only if a real site is actually hit that JSON-LD can't handle.
 
 **Ingredient-line parsing runs through a Python sidecar service, not a hand-rolled Kotlin
 parser — reversed after the human asked whether existing work could be leveraged instead of

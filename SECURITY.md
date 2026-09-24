@@ -39,7 +39,15 @@ The main areas worth extra scrutiny in reports:
   private network addresses (loopback, link-local, RFC 1918 ranges, cloud metadata endpoints
   like `169.254.169.254`) as out of scope for the fetch, not just "trust the user typed a
   recipe site." A report showing the import endpoint can be used to probe or reach internal
-  infrastructure is a real vulnerability, not a low-priority nitpick.
+  infrastructure is a real vulnerability, not a low-priority nitpick. **Implemented as of Phase
+  6**: `larder.recipeimport.validateImportUrl` (`backend/src/recipeimport/ImportUrlValidator.kt`)
+  rejects non-HTTP(S) schemes and resolves the host to check for loopback/link-local/private
+  addresses before every fetch — and, since a URL that passes this check once can still
+  redirect to an internal address afterward, redirects are followed manually
+  (`RecipeUrlFetcher.kt`), with every hop re-validated the same way, rather than trusting
+  `HttpClient`'s own redirect handling to preserve that guarantee. A report finding a gap in
+  this specific mechanism (an address class it misses, a redirect path that bypasses
+  re-validation) is exactly the kind of report this scope note is asking for.
 
 ## Supported versions
 

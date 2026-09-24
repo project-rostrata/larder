@@ -359,3 +359,45 @@ made and documented as they came up:
   always simple, short values in practice (4, 6, 2.5) that `Double` represents exactly regardless
   — float imprecision only bites on repeating binary fractions like 1/3, which servings numbers
   don't produce. Applying the fraction treatment here anyway would be process, not precision.
+
+## Phase 6: jsoup wasn't needed, an SSRF gap closed before it existed, and real-vs-synthetic test fixtures
+
+**The `jsoup` contingency flagged as far back as the original planning conversation (`brief
+section 4: "if JSON-LD proves too lossy in practice... a proper HTML parser library is the
+anticipated next step"`) was not needed.** This phase was specifically the trigger point for
+that question. Rather than guess, it was tested directly: fetched a real, live recipe page
+(food.com, one of the few real recipe sites this sandbox's outbound network could actually
+reach — most major sites' bot-protection blocked it) and confirmed the regex/`kotlinx.serialization`
+JSON-LD extraction handled it correctly end to end, messy real-world data included (stray
+whitespace in ingredient lines, a `recipeYield` string that isn't a clean number). One real site
+isn't exhaustive proof no site will ever need `jsoup`, but it's real evidence against a
+real-but-unconfirmed assumption, which is what this phase was for. Not proposed, not added,
+per `AGENTS.md`'s propose-first discipline either way.
+
+**The SSRF guard (`SECURITY.md`'s already-documented requirement) does full redirect
+re-validation, not just a check on the original URL.** A first draft validated the URL once,
+before the fetch — but a URL that passes that check can still 3xx-redirect to
+`http://169.254.169.254/...` or similar, and `HttpClient`'s own automatic redirect handling
+would follow that without ever re-running the guard. Caught this before it shipped, not after a
+report: redirects are now followed manually
+(`larder.recipeimport.fetchRecipeHtml`), one hop at a time, re-running
+`validateImportUrl` on every hop, capped at 5 redirects. `HttpClient` itself is configured with
+`followRedirects(NEVER)` so there's no chance of the built-in handling silently doing the
+unvalidated version anyway.
+
+**Error code mapping: 400 for a URL we won't fetch, 422 for a URL we fetched but couldn't use.**
+Rejected by the SSRF guard, wrong scheme, or a malformed request body are all 400 — the
+client's *own* input to *our* API was the problem. A URL that's fine, fetches fine, but yields
+no parseable `Recipe` JSON-LD (or one that fails the normal recipe validation, e.g. no title) is
+422 — `AGENTS.md`'s "well-formed request the app can't act on," since the request to *us* (a
+plain URL) was entirely well-formed; it's the *content at that URL* that wasn't usable. This
+distinction was already established by `AGENTS.md`'s error table before this phase; this is
+just the first phase to actually need both codes on the same endpoint.
+
+**Test fixtures are honestly labeled real vs. representative-synthetic, not blurred together.**
+`JsonLdRecipeParserTest.kt`'s food.com fixture is real captured JSON-LD, fetched live during
+this phase's design — the file says so directly. The `@graph`, multi-typed-`@type`, and
+`HowToSection` test cases are synthetic, built from well-documented, standardized schema.org
+patterns this sandbox's network couldn't reach a real example of during this pass — the file
+says that too, rather than presenting hand-constructed fixtures as if they were captured the
+same way the food.com one was.

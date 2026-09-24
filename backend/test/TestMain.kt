@@ -6,6 +6,8 @@ import kotlin.system.exitProcess
 // discovery without a real test framework, so this list is the only thing that finds them.
 private val testClasses = listOf(
     Class.forName("SidecarIngredientLineParserTestKt"),
+    Class.forName("JsonLdRecipeParserTestKt"),
+    Class.forName("ImportUrlValidatorTestKt"),
 )
 
 fun main() {

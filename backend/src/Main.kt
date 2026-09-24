@@ -6,6 +6,7 @@ import larder.api.MeHandler
 import larder.api.RecipeCreateHandler
 import larder.api.RecipeDeleteHandler
 import larder.api.RecipeGetHandler
+import larder.api.RecipeImportHandler
 import larder.api.RecipeUpdateHandler
 import larder.api.RecipesListHandler
 import larder.api.RegisterHandler
@@ -72,6 +73,7 @@ fun main() {
     val recipeCreateHandler = RecipeCreateHandler(recipes, ingredientParser, ingredientResolver)
     val recipeUpdateHandler = RecipeUpdateHandler(recipes, ingredientParser, ingredientResolver)
     val recipeDeleteHandler = RecipeDeleteHandler(recipes)
+    val recipeImportHandler = RecipeImportHandler(recipes, ingredientParser, ingredientResolver)
     val ingredientMergeHandler = IngredientMergeHandler(ingredients)
 
     val router = Router()
@@ -84,6 +86,7 @@ fun main() {
     router.get("/api/recipes", requireAuth(sessions, users, recipesListHandler::handle))
     router.get("/api/recipes/:id", requireAuth(sessions, users, recipeGetHandler::handle))
     router.post("/api/recipes", requireAuth(sessions, users, recipeCreateHandler::handle))
+    router.post("/api/recipes/import", requireAuth(sessions, users, recipeImportHandler::handle))
     router.put("/api/recipes/:id", requireAuth(sessions, users, recipeUpdateHandler::handle))
     router.delete("/api/recipes/:id", requireAuth(sessions, users, recipeDeleteHandler::handle))
     router.post(

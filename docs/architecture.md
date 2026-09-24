@@ -8,7 +8,7 @@ changes.
 
 ## Status
 
-**Phases 0–5 are done.** Repo scaffold and planning docs; a backend skeleton (hand-rolled
+**Phases 0–6 are done.** Repo scaffold and planning docs; a backend skeleton (hand-rolled
 router, sealed `ApiResult`/JSON error-envelope pattern, pooled JDBC connection, `GET
 /api/health`, `GET /api/version`); the full v1 database schema (`users`, `sessions`, the global
 `ingredients`/`ingredient_aliases`/`units`/`unit_conversions` vocabulary seeded with 21 starter
@@ -20,10 +20,12 @@ only, no email column at all (unlike `shelf`, which collects and later dropped i
 never had it to begin with, per the human's explicit direction); a standalone ingredient-parser
 sidecar (`ingredient-parser/` — Python, wraps `strangetom/ingredient-parser`); the Kotlin side
 that calls it (`larder.ingredients.IngredientLineParser`/`SidecarIngredientLineParser`,
-`IngredientResolver`, `IngredientRepository`/`UnitRepository`); and now real recipe CRUD —
+`IngredientResolver`, `IngredientRepository`/`UnitRepository`); real recipe CRUD —
 `GET/POST /api/recipes`, `GET/PUT/DELETE /api/recipes/{id}`,
-`POST /api/ingredients/{id}/merge-into/{targetId}` — the first endpoints that actually call the
-ingredient-parsing pipeline built in Phase 4.
+`POST /api/ingredients/{id}/merge-into/{targetId}`; and now recipe URL import —
+`POST /api/recipes/import` (`larder.recipeimport`: `JsonLdRecipeParser`, an SSRF guard, and a
+manually-redirect-following fetcher) — feeding the same create path Phase 5 already built,
+rather than a separate one.
 
 **`backend/test/TestMain.kt` and `backend/test.sh` exist for the first time as of Phase 4b** —
 `AGENTS.md`'s testing section anticipated "Phase 1 or Phase 4" as the trigger; Phase 4a turned
@@ -66,6 +68,13 @@ cross-user ownership isolation (a second user sees zero of the first user's reci
 `recipe_ingredients` row, rejects self-merge, and 404s on an already-merged-away id; and
 confirmed the resilience case that matters most: stopping the sidecar mid-session and creating a
 recipe anyway still succeeds, with that ingredient line falling back to raw-text-only.
+Phase 6 was verified against a **real, live recipe page** (this sandbox's outbound network
+could only reach a handful of real recipe sites past their bot-protection — food.com was one)
+— fetched, extracted, ran every ingredient through the real sidecar, and persisted correctly,
+messy whitespace and an imprecise `recipeYield` included; separately confirmed the SSRF guard
+rejects loopback and cloud-metadata addresses and a bad scheme (400), a reachable URL with no
+Recipe JSON-LD returns 422, and a malformed request body returns 400 — all through the real
+HTTP API, not just unit tests.
 
 ## System shape
 
@@ -118,14 +127,15 @@ larder/
         LogoutHandler.kt           POST /api/logout — idempotent, reads the cookie directly
                                     rather than through requireAuth
         MeHandler.kt                GET /api/me (behind requireAuth)
-        RecipeRequest.kt         request DTOs, shared by create and update
+        RecipeRequest.kt         request DTOs, shared by create/update/import; toFields()
+                                   mapper onto RecipeFields, same shared-by-all-three principle
         RecipeResponse.kt         response DTOs + RecipeRow.toResponse()/
                                     PersistedRecipe.toWriteResponse() mappers — Read and Write
                                     response shapes are deliberately separate types (see
                                     docs/decisions.md)
-        RecipeValidation.kt        validateRecipeRequest(), shared by create and update
+        RecipeValidation.kt        validateRecipeRequest(), shared by create/update/import
         RecipeIngredientResolution.kt  resolveIngredientLines() — the parser+resolver call per
-                                         raw line, shared by create and update, order-preserving
+                                         raw line, shared by create/update/import, order-preserving
         RecipesListHandler.kt      GET /api/recipes?tag=... — excludes soft-deleted
         RecipeGetHandler.kt         GET /api/recipes/{id} — does NOT exclude soft-deleted
         RecipeCreateHandler.kt        POST /api/recipes
@@ -133,8 +143,30 @@ larder/
                                          on a deleted/missing/not-owned recipe, all identical
         RecipeDeleteHandler.kt           DELETE /api/recipes/{id} — soft delete; already-deleted
                                            is 404, not idempotent-200
+        RecipeImportHandler.kt            POST /api/recipes/import — fetches + extracts, then
+                                            feeds the same validate/resolve/persist path as
+                                            create; 400 for a URL we won't fetch (bad scheme,
+                                            SSRF-guard rejection, bad request body), 422 for a
+                                            URL we fetched but couldn't use (no Recipe JSON-LD,
+                                            or its data fails normal recipe validation)
         IngredientMergeHandler.kt          POST /api/ingredients/{id}/merge-into/{targetId} — no
                                              ownership check, ingredients are global
+      recipeimport/
+        JsonLdRecipeParser.kt      extractRecipeFromHtml() — pure, no I/O; finds a Recipe
+                                     object (top-level, in an array, or inside @graph) among
+                                     every <script type="application/ld+json"> block on the
+                                     page and maps its fields onto ImportedRecipe. Safe casts
+                                     (as?) throughout, not the throwing .jsonObject/.jsonArray
+                                     properties -- the JsonNull lesson from Phase 4b, applied
+                                     proactively here rather than caught by a failing test
+        ImportUrlValidator.kt       validateImportUrl() -- the SSRF guard SECURITY.md requires:
+                                     rejects non-HTTP(S) schemes and any host resolving to a
+                                     loopback/link-local (covers 169.254.169.254)/RFC 1918
+                                     address
+        RecipeUrlFetcher.kt          fetchRecipeHtml() -- follows redirects manually, one hop
+                                       at a time, re-running validateImportUrl() on every hop
+                                       (HttpClient's own redirect handling would bypass that),
+                                       capped at 5 hops
       db/
         ConnectionPool.kt       fixed-size pool of JDBC connections, opened once at startup
         Database.kt              queryOne/queryOneOrNull/queryList/update, all
@@ -173,6 +205,15 @@ larder/
                                     and runs every test*() in the classes listed here
       SidecarIngredientLineParserTest.kt  8 cases, built from real captured sidecar responses
                                             (multiple amounts, composite, range, notes-joining)
+      JsonLdRecipeParserTest.kt   8 cases -- one built from a real fetched food.com page
+                                    (labeled as such in the file), the rest representative-
+                                    synthetic (@graph, multi-typed @type, HowToSection) built
+                                    from documented schema.org patterns, honestly distinguished
+                                    from the real one rather than blurred together
+      ImportUrlValidatorTest.kt   7 cases, all using IP-literal URLs (127.0.0.1, 10.x, a real
+                                    public IP for the negative case) so the suite stays
+                                    hermetic -- an IP literal resolves locally, no real DNS
+                                    lookup, unlike a hostname would need
     lib/
       DEPENDENCIES.sha1        filename/sha1/source-url manifest — see AGENTS.md
       fetch-deps.sh             downloads + verifies the jars above; jars themselves are
@@ -236,6 +277,6 @@ different process with its own env-var namespace.
 
 ## Not built yet
 
-Everything past Phase 5: URL import, meal planning, shopping-list generation, the frontend, and
-Docker packaging (including wiring `ingredient-parser` into `docker-compose.yml`). See
-`V1_PLAN.md` for the phase order.
+Everything past Phase 6: meal planning, shopping-list generation, the frontend, and Docker
+packaging (including wiring `ingredient-parser` into `docker-compose.yml`). See `V1_PLAN.md`
+for the phase order.

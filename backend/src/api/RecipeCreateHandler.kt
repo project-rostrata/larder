@@ -2,11 +2,9 @@ package larder.api
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import larder.db.RecipeFields
 import larder.db.RecipeRepository
 import larder.ingredients.IngredientLineParser
 import larder.ingredients.IngredientResolver
-import java.math.BigDecimal
 
 class RecipeCreateHandler(
     private val recipes: RecipeRepository,
@@ -23,19 +21,7 @@ class RecipeCreateHandler(
         validateRecipeRequest(request)?.let { return Err(400, "INVALID_INPUT", it) }
 
         val resolvedLines = resolveIngredientLines(parser, resolver, request.ingredients)
-        val fields = RecipeFields(
-            title = request.title,
-            sourceUrl = request.sourceUrl,
-            servings = request.servings?.let { BigDecimal.valueOf(it) },
-            servingsText = request.servingsText,
-            prepTimeMinutes = request.prepTimeMinutes,
-            cookTimeMinutes = request.cookTimeMinutes,
-            totalTimeMinutes = request.totalTimeMinutes,
-            tags = request.tags,
-            instructions = request.instructions,
-        )
-
-        val persisted = recipes.create(user.id, fields, resolvedLines)
+        val persisted = recipes.create(user.id, request.toFields(), resolvedLines)
         val response = persisted.toWriteResponse(resolvedLines.map { it.ingredientWasNewlyCreated })
         return Ok(Json.encodeToString(response))
     }

@@ -212,22 +212,36 @@ data, not a cache of something else.
 - **`Router.kt` gained a `put()` method this phase** — it only had get/post/delete before;
   `PUT /api/recipes/{id}` is the first route that needed it.
 
-## Phase 6 — Recipe URL import
+## Phase 6 — Recipe URL import — done
 
-- `POST /api/recipes/import { url }`: fetch with `java.net.http.HttpClient`, extract
-  `<script type="application/ld+json">` blocks via regex, parse with
-  `kotlinx.serialization.json`, find a `Recipe`-typed object (top-level or inside `@graph`),
-  map its fields (`name`, `recipeIngredient`, `recipeInstructions`, `recipeYield` → `servings`/
-  `servings_text`, `prepTime`/`cookTime`/`totalTime` as ISO 8601 durations, `keywords`) onto
-  `recipes`/`recipe_ingredients` rows, running every `recipeIngredient` string through Phase
-  4b's parser — `recipeIngredient` is confirmed (brief section 4, via `recipe-scrapers`' own
-  source) to always be raw unparsed strings, so this parser is load-bearing here, not a
-  fallback.
-  No image field is read or stored, per brief section 2. Same as Phase 5, the response flags
-  which ingredient lines resolved to a new vs. existing canonical ingredient.
-- If this phase reveals that JSON-LD coverage is too thin across real-world recipe sites to be
-  useful, that's the trigger point for raising the `jsoup`/HTML-parsing dependency question
-  from brief section 4 — don't silently add it, surface it first.
+- `POST /api/recipes/import { url }`: fetch, extract JSON-LD, map onto the same `RecipeRequest`
+  shape Phase 5's create/update already validate and persist through — import doesn't duplicate
+  that path, it feeds it. `larder.recipeimport.extractRecipeFromHtml` (pure, no I/O, unit
+  tested against a real captured food.com fixture plus representative `@graph`/multi-typed/
+  `HowToSection` cases) maps `name`, `recipeIngredient`, `recipeInstructions` (flattening
+  `HowToStep` and nested `HowToSection` objects), `recipeYield` → `servings`/`servings_text`
+  (best-effort number extraction; the full text is always kept, since real yield strings like
+  "1 pound per serving" aren't clean serving counts), `prepTime`/`cookTime`/`totalTime` (ISO
+  8601 durations, `java.time.Duration.parse` — zero new dependency), and `keywords` → `tags`.
+  Every `recipeIngredient` string runs through Phase 4b's parser — confirmed (brief section 4,
+  via `recipe-scrapers`' own source) to always be raw unparsed strings, so this parser is
+  load-bearing here, not a fallback. No image field is read or stored, per brief section 2.
+- **SSRF guard, required by `SECURITY.md`**: `larder.recipeimport.validateImportUrl` rejects
+  non-HTTP(S) schemes and resolves the host to reject loopback/link-local (covers the
+  `169.254.169.254` cloud-metadata address)/RFC 1918 private addresses, checked before the
+  initial fetch. Redirects are followed manually
+  (`larder.recipeimport.fetchRecipeHtml`), not via `HttpClient`'s own redirect handling,
+  specifically so every hop gets re-validated the same way — a URL that passes the guard once
+  could still redirect to an internal address, and only re-checking each hop actually closes
+  that.
+- **Verified against a real, live recipe page, not just synthetic fixtures** — fetched,
+  extracted, parsed every ingredient through the real sidecar, and persisted correctly end to
+  end, messy real-world whitespace (`"2   teaspoons    unsalted butter"`) and an imprecise
+  `recipeYield` (`"1 pound per serving"`) included. **This resolves the trigger question this
+  phase was written to answer: JSON-LD coverage was not too thin** for the one real site
+  actually tested — the `jsoup`/HTML-parsing dependency from brief section 4 was not proposed,
+  and stays not-pre-approved. Revisit only if a real site is actually hit that this can't
+  handle, not preemptively.
 
 ## Phase 7 — Meal planning
 

@@ -70,6 +70,10 @@ class Router {
         routes += Route("PUT", parsePattern(pattern), handler)
     }
 
+    fun patch(pattern: String, handler: Handler) {
+        routes += Route("PATCH", parsePattern(pattern), handler)
+    }
+
     fun delete(pattern: String, handler: Handler) {
         routes += Route("DELETE", parsePattern(pattern), handler)
     }

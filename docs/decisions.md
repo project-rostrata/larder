@@ -613,3 +613,43 @@ Applied immediately:
 Also fixed while verifying (a Phase 9a bug, not a design change): data loading now waits for a
 known user, so a logged-out page load no longer 401s and shows "Missing or invalid session" on
 the login page. A success notice now clears an older error; previously the stale error hid it.
+
+## Phase 8: shopping-list generation
+
+Calls the brief left to this phase, made as follows:
+
+- **Display unit for a converted total**: the largest unit the contributing recipes actually used
+  where the total is at least 1 (4 cups + 2 tbsp → "4 1/8 cups"; 1/2 tsp + 1/4 tbsp → "1 1/4
+  teaspoons"). Never a unit nobody wrote.
+- **Rounding**: all arithmetic is exact (`Rational`, including the NUMERIC conversion factors,
+  which are exact decimals). Totals whose denominator is already a kitchen fraction (halves,
+  thirds, quarters, eighths) stay exact; others (only possible when units with decimal factors
+  were mixed) round to the nearest 1/8, never below 1/8. Each source keeps its exact scaled
+  amount in its own unit.
+- **Conversion rows**: one `unit_conversions` row per merge, ingredient-scoped rows tried
+  before global ones, either direction; a row connects to a whole dimension via
+  `to_base_factor` (clove→gram also reaches ounces), but never chains through a second row.
+  Volume↔mass still only happens through an explicit row, per the brief. `unit_conversions` has
+  no seed data yet, so for now conversion rows are added by hand.
+- **Unresolved lines** (no `ingredient_id`, e.g. the sidecar was down) combine only on identical
+  normalized text and never quantity-combine: without a parsed ingredient the raw text carries
+  the quantity itself.
+- **Quantity-less lines** ("salt to taste") attach as sources to that ingredient's quantified
+  item if there is one; otherwise they form their own item.
+- **Multipliers** arrive as doubles (e.g. 6 servings of a 4-serving recipe via the meal plan) and
+  are turned into the nearest fraction with denominator ≤ 100 before scaling, so 5/3 stays 5/3
+  instead of a 17-digit decimal that overflows the INTEGER quantity columns.
+- **Manual merge**: the first id survives, and its quantity is recomputed from all merged sources.
+  If the units can't all be combined, it stores no single total and the API displays each part
+  ("garlic (2 cups + 3 cloves)"). A manual item has no sources, so when it's merged its text
+  becomes an "Added manually" source rather than being lost. The survivor stays checked only if
+  every merged item was.
+- **Item endpoints**: `PATCH` (a `patch()` was added to the router, as `put()` was in Phase 5)
+  for check-off/rename, and a separate `DELETE` for removal rather than overloading `PATCH`.
+  Every item endpoint returns the whole updated list, so a client never re-derives ordering,
+  counts, or display text. Unchecked items are listed first.
+- **Recipe ownership on create**: any unknown, soft-deleted, or not-yours `recipeId` fails the
+  whole request with one 403 (the same rule as meal-plan create). An empty meal plan is a 422.
+- **Default list name**: "Meal plan", or up to three recipe titles ("A, B, C + 2 more").
+- **Not built**: aisle grouping and a "pantry" skip list (both raised in the Cooklang comparison)
+  aren't in the plan; they're candidates for later.

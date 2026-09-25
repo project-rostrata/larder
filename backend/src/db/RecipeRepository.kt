@@ -97,6 +97,18 @@ class RecipeRepository(private val database: Database) {
             mapRow = ::toRecipeRow,
         )
 
+    // Titles of the given ids that are owned by ownerId and not soft-deleted -- a missing key
+    // means "unknown, deleted, or not yours", which callers report as one 403.
+    fun findActiveTitles(ownerId: UUID, ids: Collection<UUID>): Map<UUID, String> =
+        database.queryList(
+            "SELECT id, title FROM recipes WHERE owner_id = ? AND deleted_at IS NULL AND id = ANY(?)",
+            bind = { stmt ->
+                stmt.setObject(1, ownerId)
+                stmt.setArray(2, stmt.connection.createArrayOf("uuid", ids.toTypedArray()))
+            },
+            mapRow = { rs -> rs.getObject("id", UUID::class.java) to rs.getString("title") },
+        ).toMap()
+
     fun findIngredients(recipeId: UUID): List<RecipeIngredientRow> =
         database.queryList(
             "SELECT $RECIPE_INGREDIENT_COLUMNS FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position",

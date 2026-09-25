@@ -9,6 +9,7 @@ private val testClasses = listOf(
     Class.forName("JsonLdRecipeParserTestKt"),
     Class.forName("ImportUrlValidatorTestKt"),
     Class.forName("DisplayTestKt"),
+    Class.forName("ShoppingCombineTestKt"),
 )
 
 fun main() {

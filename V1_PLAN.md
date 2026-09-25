@@ -261,7 +261,7 @@ data, not a cache of something else.
   order, joined with `recipeTitle`/`recipeDeleted`; an unknown-or-not-yours `recipe_id` is one
   403 (no existence leak), a soft-deleted own recipe is 422. No update endpoint.
 
-## Phase 8 — Shopping list generation
+## Phase 8 — Shopping list generation (done)
 
 - `POST /api/shopping-lists { recipe_ids } | { from_meal_plan: true }` — the
   `recipe_ids` form must filter to recipes owned by the authenticated user (same ownership rule
@@ -291,6 +291,13 @@ data, not a cache of something else.
   automatic combination misses (brief section 4) — the exact response shape for an
   incompatible-unit merge is an implementation detail to work out in this phase, not something
   the brief prescribes; the UI that would call this endpoint is deferred (brief section 5).
+
+- As built: `POST /api/shopping-lists {name?, recipeIds | fromMealPlan: true}`, `GET
+  /api/shopping-lists` (summaries), `GET/DELETE /api/shopping-lists/{id}`, `POST .../items`
+  (manual item), `PATCH/DELETE .../items/{itemId}` (check off, rename / remove), `POST
+  .../items/merge {itemIds}`. Item endpoints return the whole updated list. The combination
+  logic is a pure function (`larder.shopping.Combiner`, exact `Rational` arithmetic, 14 hermetic
+  tests); items carry an API-formatted `display` string. Details in `docs/decisions.md`.
 
 ## Phase 9 — Frontend (VanJS)
 

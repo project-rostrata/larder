@@ -151,6 +151,25 @@ real browser too), no horizontal overflow at 390px, and zero console errors. Thi
 Phase 9a bug: on a logged-out page load the router fetched `/api/recipes` before auth was known,
 showing "Missing or invalid session" on the login page. Loading now waits for a known user.
 
+**Phase 8 (shopping-list generation API) is done.** A list is generated from chosen recipes or
+the whole meal plan (scaled by each entry's multiplier), combined, and saved as
+`shopping_lists`/`shopping_list_items`/`shopping_list_item_sources` rows. Those rows are
+snapshots, so later recipe edits or deletions don't change an existing list. Verified live
+against real Postgres and the real ingredient-parser sidecar:
+- **Combining:** "1 cup flour" (×1.5) + "2 tablespoons flour" became 1 5/8 cups; "2 large eggs"
+  (×1.5) + "3 eggs" became 6 eggs; salt teaspoons summed exactly.
+- **Conversion rows:** garlic cloves and grams stayed separate until an ingredient-scoped
+  clove→gram row was added, then combined.
+- **Item operations and merges:** check-off ordering, manual items, rename, delete, a compatible
+  merge (one total), a manual item merged in (its text kept as a source), and an incompatible
+  merge (displays each part).
+- **Errors and isolation:** every 400/403/404/422 path, cross-user isolation, and deleting a list
+  cascading its items.
+- **Snapshots:** the list was byte-for-byte unchanged after editing one source recipe and
+  deleting another.
+
+No UI yet (rest of Phase 9b).
+
 ## System shape
 
 ```
@@ -233,6 +252,12 @@ larder/
                                             SSRF-guard rejection, bad request body), 422 for a
                                             URL we fetched but couldn't use (no Recipe JSON-LD,
                                             or its data fails normal recipe validation)
+        ShoppingListDto.kt          Phase 8 — request/response DTOs; builds each item's display
+                                       string ("4 1/8 cups flour", "garlic (2 cups + 3 cloves)")
+        ShoppingListHandlers.kt     Phase 8 — create (recipeIds ownership-checked: one 403 for
+                                       unknown/deleted/not-yours; empty meal plan 422), list, get,
+                                       delete, item add/PATCH/delete, merge; item endpoints return
+                                       the whole updated list
         Display.kt                  display formatting (times, servings) — the API formats, the
                                        UI renders; see AGENTS.md
         MealPlanDto.kt              Phase 7 — request/response DTOs
@@ -286,6 +311,17 @@ larder/
                                                       recipes for title + deleted flag, so
                                                       entries for soft-deleted recipes still
                                                       render; insertion order
+        ShoppingListRepository.kt   Phase 8 — loads units/conversions, gathers scaled lines from
+                                      owned non-deleted recipes, persists lists/items/sources in
+                                      one transaction, item ops, merge
+      shopping/                     Phase 8 — pure, no I/O
+        Rational.kt                 exact fractions (BigInteger); approximate() for double
+                                      multipliers; niceRound() to eighths for mixed-unit totals
+        Combine.kt                  groups by ingredient (or normalized text if unresolved),
+                                      combines by unit path: same unit, same dimension, or one
+                                      unit_conversions row (ingredient-scoped first); picks the
+                                      display unit
+        QuantityFormat.kt           "4 1/8", "2 cups", "3 pinches"
       ingredients/
         IngredientLineParser.kt   the interface + ParsedIngredientLine (raw split, not yet
                                     resolved against larder's own tables)
@@ -306,6 +342,7 @@ larder/
                                     synthetic (@graph, multi-typed @type, HowToSection) built
                                     from documented schema.org patterns, honestly distinguished
                                     from the real one rather than blurred together
+      ShoppingCombineTest.kt      14 cases — every combining rule, rounding, formatting
       DisplayTest.kt              3 cases — time, number, and servings formatting
       ImportUrlValidatorTest.kt   7 cases, all using IP-literal URLs (127.0.0.1, 10.x, a real
                                     public IP for the negative case) so the suite stays
@@ -445,5 +482,5 @@ different process with its own env-var namespace.
 
 ## Not built yet
 
-Phase 8 (shopping-list generation), and Phase 9b (their frontend
-views). See `V1_PLAN.md` for the phase order.
+The shopping-list UI (the rest of Phase 9b), then Phase 11's hardening pass. See `V1_PLAN.md`
+for the phase order.

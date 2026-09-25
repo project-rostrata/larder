@@ -4,6 +4,11 @@ import larder.api.LoginHandler
 import larder.api.MealPlanCreateHandler
 import larder.api.MealPlanDeleteHandler
 import larder.api.MealPlanListHandler
+import larder.api.ShoppingListCreateHandler
+import larder.api.ShoppingListDeleteHandler
+import larder.api.ShoppingListGetHandler
+import larder.api.ShoppingListItemHandlers
+import larder.api.ShoppingListsListHandler
 import larder.api.LogoutHandler
 import larder.api.MeHandler
 import larder.api.RecipeCreateHandler
@@ -23,6 +28,7 @@ import larder.db.ConnectionPool
 import larder.db.Database
 import larder.db.IngredientRepository
 import larder.db.MealPlanRepository
+import larder.db.ShoppingListRepository
 import larder.db.MigrationRunner
 import larder.db.RecipeRepository
 import larder.db.SessionRepository
@@ -66,6 +72,7 @@ fun main() {
     val recipes = RecipeRepository(database)
     val ingredients = IngredientRepository(database)
     val mealPlan = MealPlanRepository(database)
+    val shoppingLists = ShoppingListRepository(database)
     val units = UnitRepository(database)
     val ingredientParser = SidecarIngredientLineParser(ingredientParserUrl)
     val ingredientResolver = IngredientResolver(units, ingredients)
@@ -85,6 +92,11 @@ fun main() {
     val mealPlanListHandler = MealPlanListHandler(mealPlan)
     val mealPlanCreateHandler = MealPlanCreateHandler(mealPlan, recipes)
     val mealPlanDeleteHandler = MealPlanDeleteHandler(mealPlan)
+    val shoppingListCreateHandler = ShoppingListCreateHandler(shoppingLists, recipes, mealPlan)
+    val shoppingListsListHandler = ShoppingListsListHandler(shoppingLists)
+    val shoppingListGetHandler = ShoppingListGetHandler(shoppingLists)
+    val shoppingListDeleteHandler = ShoppingListDeleteHandler(shoppingLists)
+    val shoppingListItemHandlers = ShoppingListItemHandlers(shoppingLists)
     val staticFileHandler = StaticFileHandler(Path.of(frontendDir))
 
     val router = Router()
@@ -107,6 +119,14 @@ fun main() {
     router.get("/api/meal-plan", requireAuth(sessions, users, mealPlanListHandler::handle))
     router.post("/api/meal-plan", requireAuth(sessions, users, mealPlanCreateHandler::handle))
     router.delete("/api/meal-plan/:id", requireAuth(sessions, users, mealPlanDeleteHandler::handle))
+    router.get("/api/shopping-lists", requireAuth(sessions, users, shoppingListsListHandler::handle))
+    router.post("/api/shopping-lists", requireAuth(sessions, users, shoppingListCreateHandler::handle))
+    router.get("/api/shopping-lists/:id", requireAuth(sessions, users, shoppingListGetHandler::handle))
+    router.delete("/api/shopping-lists/:id", requireAuth(sessions, users, shoppingListDeleteHandler::handle))
+    router.post("/api/shopping-lists/:id/items", requireAuth(sessions, users, shoppingListItemHandlers::add))
+    router.post("/api/shopping-lists/:id/items/merge", requireAuth(sessions, users, shoppingListItemHandlers::merge))
+    router.patch("/api/shopping-lists/:id/items/:itemId", requireAuth(sessions, users, shoppingListItemHandlers::update))
+    router.delete("/api/shopping-lists/:id/items/:itemId", requireAuth(sessions, users, shoppingListItemHandlers::delete))
     router.serveStatic(staticFileHandler::serve)
 
     val server = HttpServer.create(InetSocketAddress(port), 0)

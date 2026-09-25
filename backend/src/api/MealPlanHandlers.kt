@@ -5,28 +5,14 @@ import kotlinx.serialization.json.Json
 import larder.db.MealPlanRepository
 import larder.db.RecipeRepository
 import java.math.BigDecimal
-import java.time.LocalDate
-import java.time.format.DateTimeParseException
-import java.time.temporal.ChronoUnit
 import java.util.UUID
 
-private const val MAX_RANGE_DAYS = 366
 private const val MAX_SERVINGS_MULTIPLIER = 100.0
-
-private fun parseDate(raw: String?): LocalDate? =
-    raw?.let { try { LocalDate.parse(it) } catch (e: DateTimeParseException) { null } }
+private const val MAX_LABEL_LENGTH = 100
 
 class MealPlanListHandler(private val mealPlan: MealPlanRepository) {
     fun handle(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
-        val from = parseDate(ctx.query["from"])
-            ?: return Err(400, "INVALID_INPUT", "from must be a date (YYYY-MM-DD)")
-        val to = parseDate(ctx.query["to"])
-            ?: return Err(400, "INVALID_INPUT", "to must be a date (YYYY-MM-DD)")
-        if (to.isBefore(from)) return Err(400, "INVALID_INPUT", "to must not be before from")
-        if (ChronoUnit.DAYS.between(from, to) >= MAX_RANGE_DAYS) {
-            return Err(400, "INVALID_INPUT", "range must be at most $MAX_RANGE_DAYS days")
-        }
-        val entries = mealPlan.list(user.id, from, to).map { it.toResponse() }
+        val entries = mealPlan.list(user.id).map { it.toResponse() }
         return Ok(Json.encodeToString(MealPlanListResponse(entries)))
     }
 }
@@ -42,10 +28,9 @@ class MealPlanCreateHandler(
             return Err(400, "INVALID_BODY", "Malformed request body")
         }
 
-        val planDate = parseDate(request.planDate)
-            ?: return Err(400, "INVALID_INPUT", "planDate must be a date (YYYY-MM-DD)")
-        if (request.mealSlot !in MEAL_SLOTS) {
-            return Err(400, "INVALID_INPUT", "mealSlot must be one of ${MEAL_SLOTS.joinToString()}")
+        val label = request.label?.trim()?.takeIf { it.isNotEmpty() }
+        if (label != null && label.length > MAX_LABEL_LENGTH) {
+            return Err(400, "INVALID_INPUT", "label must be at most $MAX_LABEL_LENGTH characters")
         }
         val multiplier = request.servingsMultiplier
         if (!multiplier.isFinite() || multiplier <= 0.0 || multiplier > MAX_SERVINGS_MULTIPLIER) {
@@ -63,7 +48,7 @@ class MealPlanCreateHandler(
             return Err(422, "RECIPE_DELETED", "Cannot plan a deleted recipe")
         }
 
-        val entry = mealPlan.create(user.id, planDate, request.mealSlot, recipeId, BigDecimal.valueOf(multiplier))
+        val entry = mealPlan.create(user.id, recipeId, label, BigDecimal.valueOf(multiplier))
         return Ok(Json.encodeToString(entry.toResponse()))
     }
 }

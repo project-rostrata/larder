@@ -121,13 +121,15 @@ sidecar's, see `docs/decisions.md`); confirmed a clean `docker stop` exits promp
 the normal SIGTERM result) with no forced kill needed.
 
 **Phase 7 (meal planning API) is done** — `GET/POST /api/meal-plan`, `DELETE
-/api/meal-plan/{id}`. Verified live against a real Postgres through the HTTP API: slot ordering
-within a day (breakfast/lunch/dinner, not alphabetical), inclusive date-range filtering,
-cross-user isolation (a second user sees none of the first's entries and gets 404 deleting
-one), a not-owned and a nonexistent `recipe_id` both returning the identical 403, every
-validation 400, 401 without a session, and the soft-delete contract this schema was designed
-around: soft-deleting a planned recipe leaves its entries intact (`recipeDeleted: true`, title
-still shown) while planning it again returns 422. No UI yet (Phase 9b).
+/api/meal-plan/{id}`. A meal plan is one flat list per user: each entry is a recipe, an
+optional free-text label, and a servings multiplier — no dates or meal slots (migration `0003`
+removed a first cut's `plan_date`/`meal_slot`). Verified live against a real Postgres through
+the HTTP API, including the upgrade path (a pre-`0003` database with an existing entry
+migrated cleanly, entry intact): label trimming/blank-to-null/length cap, insertion ordering,
+cross-user isolation, a not-owned and a nonexistent `recipe_id` both returning the identical
+403, and the soft-delete contract — soft-deleting a planned recipe leaves its entries intact
+(`recipeDeleted: true`, title still shown) while planning it again returns 422. No UI yet
+(Phase 9b).
 
 ## System shape
 
@@ -211,10 +213,10 @@ larder/
                                             SSRF-guard rejection, bad request body), 422 for a
                                             URL we fetched but couldn't use (no Recipe JSON-LD,
                                             or its data fails normal recipe validation)
-        MealPlanDto.kt              Phase 7 — request/response DTOs + MEAL_SLOTS (fixed set)
-        MealPlanHandlers.kt          Phase 7 — GET /api/meal-plan?from=&to= (inclusive, max 366
-                                       days), POST /api/meal-plan (explicit recipe_id ownership
-                                       check: 403 for unknown-or-not-yours, 422 for a
+        MealPlanDto.kt              Phase 7 — request/response DTOs
+        MealPlanHandlers.kt          Phase 7 — GET /api/meal-plan (whole list), POST /api/meal-plan
+                                       (optional label, trimmed, max 100 chars; (explicit recipe_id ownership
+                                       403 for unknown-or-not-yours recipe_id, 422 for a
                                        soft-deleted own recipe), DELETE /api/meal-plan/{id}
         IngredientMergeHandler.kt          POST /api/ingredients/{id}/merge-into/{targetId} — no
                                              ownership check, ingredients are global
@@ -260,7 +262,7 @@ larder/
         MealPlanEntryRow.kt / MealPlanRepository.kt  Phase 7 — owner_id-scoped; rows joined with
                                                       recipes for title + deleted flag, so
                                                       entries for soft-deleted recipes still
-                                                      render; ordered by date, then slot order
+                                                      render; insertion order
       ingredients/
         IngredientLineParser.kt   the interface + ParsedIngredientLine (raw split, not yet
                                     resolved against larder's own tables)
@@ -344,6 +346,7 @@ larder/
     migrations/
       0001_initial_schema.sql   all v1 tables, indexes, and constraints (PROJECT_BRIEF.md §7)
       0002_seed_units.sql       21 starter units (volume/mass/count) with conversion factors
+      0003_meal_plan_labels.sql  meal plan becomes a flat list: drops plan_date/meal_slot, adds label
   ingredient-parser/            Phase 4a — standalone Python sidecar, see its own README.md
     app.py                       stdlib http.server, POST /parse + GET /health, model loaded
                                    once at import time, Fraction quantities (not floats)

@@ -33,7 +33,7 @@ are built the way they are, not just what was built.
 - Recipes stored as normalized Postgres rows (title, tags, structured ingredients,
   instructions), no images
 - Recipe import from a URL (schema.org JSON-LD)
-- Meal planning: assign recipes to dates/meal slots
+- Meal planning: a list of planned recipes with optional labels
 - Shopping list generation from a meal plan or a hand-picked set of recipes, combining shared
   ingredients into single line items, saved and editable (check off, add/remove by hand)
 - Responsive VanJS UI
@@ -85,7 +85,7 @@ Port 8080 by default; visit `http://localhost:8080/` for the UI. Routes so far:
 `POST /api/logout`, `GET /api/me`, `GET /api/recipes`,
 `GET/POST/PUT/DELETE /api/recipes/{id}` (POST for create is on the collection route, not
 `{id}`), `POST /api/recipes/import`, `POST /api/ingredients/{id}/merge-into/{targetId}`,
-`GET /api/meal-plan?from=&to=`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}`. Any
+`GET /api/meal-plan`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}`. Any
 other `GET` outside `/api/` serves the frontend from `LARDER_FRONTEND_DIR` (defaults to
 `../frontend` via `run.sh`).
 

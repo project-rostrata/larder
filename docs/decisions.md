@@ -570,3 +570,22 @@ the fix — not a test that happened to pass either way.
 - **No update endpoint** — the plan scoped Phase 7 to GET/POST/DELETE; moving an entry is
   delete + create. Easy to add if the Phase 9b UI wants drag-to-move.
 - **Entry deletion is a hard delete** — nothing references a meal-plan entry.
+
+## Meal plan is a flat list with optional labels — reverses Phase 7's dates and fixed slots
+
+The human's direction after reviewing Phase 7's first cut: "For a meal plan, we just want a list
+of recipes, and optional labels. We don't want fixed meal slots." This supersedes the Phase 7
+entry above on slots, date ranges, and the 366-day cap. Read as dropping calendar dates as well
+as slots — "just a list" — so a meal plan is one running list per user, each entry a recipe, an
+optional free-text label (e.g. "Monday", "for guests"), and the servings multiplier (kept:
+Phase 8 needs it to scale quantities).
+
+- New migration `0003_meal_plan_labels.sql` rather than editing `0001` — `0001` has already been
+  applied to real databases (including the human's own Docker deployment). It drops
+  `plan_date`/`meal_slot` and adds nullable `label`; existing entries keep their recipe and
+  multiplier, their old date/slot is discarded rather than folded into a label (verified: a
+  pre-`0003` database migrates cleanly with its entry intact).
+- Label is trimmed, blank becomes null, capped at 100 characters. Free text on purpose — unlike
+  the fixed slots it replaces, labels aren't meant to line up into grid rows.
+- Phase 8's meal-plan source becomes `{ from_meal_plan: true }` (the whole list) instead of a
+  date range.

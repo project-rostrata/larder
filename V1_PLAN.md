@@ -245,8 +245,10 @@ data, not a cache of something else.
 
 ## Phase 7 — Meal planning (done)
 
-- `GET /api/meal-plan?from=...&to=...`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` —
-  CRUD for `meal_plan_entries` (date, meal slot, recipe id, servings multiplier). `POST` must
+- `GET /api/meal-plan`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` — CRUD for
+  `meal_plan_entries` (recipe id, optional free-text label, servings multiplier). A meal plan
+  is one flat list per user — no calendar dates, no fixed meal slots (human's direction, after
+  a first cut had both; see `docs/decisions.md`). `POST` must
   verify the client-supplied `recipe_id` resolves to a recipe owned by the authenticated user
   before creating the entry — the FK only proves the recipe exists, not that it's theirs (see
   `AGENTS.md`'s ownership rule).
@@ -254,15 +256,14 @@ data, not a cache of something else.
   decision (brief section 4's "Recipe scaling"), not an open question to re-flag. Multiplying a
   recipe's `servings` (the numeric field) by this factor, never `servings_text` (display-only),
   is what determines each entry's actual scaled ingredient quantities.
-- As built: `meal_slot` is a fixed set (`breakfast`/`lunch`/`dinner`/`snack`), validated in the
-  handler; list requires `from`/`to` (inclusive, max 366 days) and returns entries joined with
-  `recipeTitle`/`recipeDeleted`; an unknown-or-not-yours `recipe_id` is one 403 (no existence
-  leak), a soft-deleted own recipe is 422. No update endpoint — moving an entry is delete +
-  create, per this phase's original scope.
+- As built: migration `0003_meal_plan_labels.sql` drops `plan_date`/`meal_slot` and adds a
+  nullable `label` (trimmed, blank → null, max 100 chars). List returns every entry in insertion
+  order, joined with `recipeTitle`/`recipeDeleted`; an unknown-or-not-yours `recipe_id` is one
+  403 (no existence leak), a soft-deleted own recipe is 422. No update endpoint.
 
 ## Phase 8 — Shopping list generation
 
-- `POST /api/shopping-lists { recipe_ids } | { meal_plan_from, meal_plan_to }` — the
+- `POST /api/shopping-lists { recipe_ids } | { from_meal_plan: true }` — the
   `recipe_ids` form must filter to recipes owned by the authenticated user (same ownership rule
   as Phase 7's `recipe_id`, `AGENTS.md`) before gathering anything, not just trust the list.
   Gathers every ingredient across the selected recipes (a query against `recipe_ingredients`,
@@ -323,7 +324,7 @@ views once Phases 7/8 land. No document-wide renumbering — later phases keep t
 
 ### Phase 9b — Meal planner + shopping list views (placeholder, not started)
 
-- Meal planner (calendar-ish date/slot grid), shopping list view (checkable items, manual add,
+- Meal planner (a list of planned recipes with optional labels), shopping list view (checkable items, manual add,
   a UI for Phase 8's manual item-merge endpoint). Depends on Phases 7 and 8 existing first.
 
 ## Phase 10 — Docker (done)

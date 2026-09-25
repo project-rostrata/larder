@@ -282,8 +282,8 @@ in the most mature OSS competitor researched.** Tandoor Recipes — the most fea
 three apps researched for this decision — does not combine ingredients across recipes at all;
 it emits one shopping-list line per recipe-ingredient and only sorts them for display adjacency.
 Mealie does combine, and its logic (`can_merge`/`merge_items`) is the concrete reference
-larder's own logic is modeled on. The user selects a set of recipes (directly, or via a
-meal-plan date range, scaled by each entry's `servings_multiplier`), the server gathers every
+larder's own logic is modeled on. The user selects a set of recipes (directly, or via the
+meal plan, scaled by each entry's `servings_multiplier`), the server gathers every
 ingredient across them, and:
 - **Two ingredient lines combine when they resolve to the same `ingredient_id`** and either
   share a `unit_id`, or their units are convertible (same dimension via `to_base_factor`, or a
@@ -347,8 +347,9 @@ ingredient across them, and:
 - Recipe CRUD: create, view, edit, delete, stored as normalized Postgres rows
 - Recipe URL import (schema.org JSON-LD)
 - Ingredient-line parser (structured quantity/unit/name from free text)
-- Meal planning: assign recipes to calendar dates/slots, with a per-entry servings multiplier
-- Shopping list generation from a set of recipes or a meal-plan date range, with combination,
+- Meal planning: a list of planned recipes, each with an optional free-text label and a
+  per-entry servings multiplier (no calendar dates or fixed meal slots)
+- Shopping list generation from a set of recipes or the meal plan, with combination,
   persisted and editable (check off, add/remove items by hand)
 - Responsive VanJS UI
 
@@ -387,7 +388,7 @@ recipe_ingredients(id, recipe_id, position, raw_text, notes NULL,
                     quantity_numerator NULL, quantity_denominator NULL,
                     unit_id NULL, ingredient_id NULL)
 
-meal_plan_entries(id, owner_id, plan_date, meal_slot, recipe_id, servings_multiplier,
+meal_plan_entries(id, owner_id, recipe_id, label NULL, servings_multiplier,
                    created_at)   -- recipe_id resolves even after the recipe is soft-deleted (§4)
 
 shopping_lists(id, owner_id, name, created_at)

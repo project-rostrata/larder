@@ -26,6 +26,10 @@ data class ShoppingListItemCreateRequest(val text: String)
 @Serializable
 data class ShoppingListItemUpdateRequest(val checked: Boolean? = null, val text: String? = null)
 
+// Move the item to just before beforeItemId; null moves it to the end.
+@Serializable
+data class ShoppingListItemMoveRequest(val beforeItemId: String? = null)
+
 @Serializable
 data class ShoppingListMergeRequest(val itemIds: List<String>, val remember: Boolean = false)
 

@@ -209,7 +209,7 @@ button:disabled { opacity: .6; cursor: default; }
 .shop-remember { display: inline-flex; align-items: center; gap: 8px; color: var(--text-primary); cursor: pointer; }
 .shop-remember input { width: 18px; height: 18px; accent-color: var(--accent-fill); margin: 0; }
 .shop-item {
-  display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border);
   border-radius: 10px; padding: 10px 8px 10px 14px; width: 100%; text-align: left; font: inherit; color: inherit;
 }
 .shop-item-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; cursor: pointer; }
@@ -223,6 +223,16 @@ button:disabled { opacity: .6; cursor: default; }
 }
 .shop-item.checked .shop-check { background: var(--accent-fill); border-color: var(--accent-fill); }
 .shop-item.selectable { cursor: pointer; }
+.shop-grip {
+  flex-shrink: 0; background: none; border: none; padding: 0; margin-left: -6px; width: 28px; height: 40px;
+  display: flex; align-items: center; justify-content: center; color: var(--text-secondary);
+  cursor: grab; touch-action: none; border-radius: 6px;
+}
+.shop-grip:hover, .shop-grip:focus-visible { color: var(--text-primary); background: var(--row-hover); }
+.shop-item.dragging { position: relative; z-index: 5; box-shadow: 0 8px 24px rgba(0,0,0,0.25); cursor: grabbing; }
+.shop-item.dragging .shop-grip { cursor: grabbing; }
+.shop-item.drop-before { box-shadow: 0 -4px 0 0 var(--accent-fill); }
+.shop-item.drop-after { box-shadow: 0 4px 0 0 var(--accent-fill); }
 .shop-item.selected { border-color: var(--accent-fill); }
 .shop-pick {
   flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border-strong);

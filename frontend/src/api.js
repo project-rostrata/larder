@@ -52,6 +52,8 @@ export const api = {
   deleteShoppingList: (id) => request("DELETE", `/api/shopping-lists/${id}`),
   addShoppingItem: (id, text) => request("POST", `/api/shopping-lists/${id}/items`, { text }),
   updateShoppingItem: (id, itemId, body) => request("PATCH", `/api/shopping-lists/${id}/items/${itemId}`, body),
+  moveShoppingItem: (id, itemId, beforeItemId) =>
+    request("POST", `/api/shopping-lists/${id}/items/${itemId}/move`, { beforeItemId }),
   deleteShoppingItem: (id, itemId) => request("DELETE", `/api/shopping-lists/${id}/items/${itemId}`),
   mergeShoppingItems: (id, itemIds, remember) =>
     request("POST", `/api/shopping-lists/${id}/items/merge`, { itemIds, remember }),

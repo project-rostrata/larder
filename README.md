@@ -87,7 +87,7 @@ Port 8080 by default; visit `http://localhost:8080/` for the UI. Routes so far:
 `GET /api/meal-plan`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}`,
 `GET/POST /api/shopping-lists`, `GET/DELETE /api/shopping-lists/{id}`,
 `POST /api/shopping-lists/{id}/items`, `PATCH/DELETE /api/shopping-lists/{id}/items/{itemId}`,
-`POST /api/shopping-lists/{id}/items/merge`. Any
+`POST /api/shopping-lists/{id}/items/merge`, `POST /api/shopping-lists/{id}/items/{itemId}/move`. Any
 other `GET` outside `/api/` serves the frontend from `LARDER_FRONTEND_DIR` (defaults to
 `../frontend` via `run.sh`).
 

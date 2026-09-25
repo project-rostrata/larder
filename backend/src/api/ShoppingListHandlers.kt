@@ -142,6 +142,21 @@ class ShoppingListItemHandlers(
         return respondWithList(lists, listId, user.id)
     }
 
+    fun move(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
+        val id = uuidOrNull(ctx.pathParams["id"]) ?: return Err(400, "INVALID_INPUT", "invalid shopping list id")
+        val detail = lists.find(id, user.id) ?: return Err(404, "NOT_FOUND", "Shopping list not found")
+        val itemId = uuidOrNull(ctx.pathParams["itemId"]) ?: return Err(400, "INVALID_INPUT", "invalid item id")
+        val request = try { Json.decodeFromString<ShoppingListItemMoveRequest>(ctx.readBody()) }
+            catch (e: Exception) { return Err(400, "INVALID_BODY", "Malformed request body") }
+        val before = request.beforeItemId?.let { uuidOrNull(it) ?: return Err(400, "INVALID_INPUT", "invalid beforeItemId") }
+        val itemIds = detail.items.map { it.id }.toSet()
+        if (itemId !in itemIds) return Err(404, "NOT_FOUND", "Item not found")
+        if (before == itemId) return Err(400, "INVALID_INPUT", "cannot move an item before itself")
+        if (before != null && before !in itemIds) return Err(404, "NOT_FOUND", "Item not found: $before")
+        lists.moveItem(id, itemId, before)
+        return respondWithList(lists, id, user.id)
+    }
+
     fun delete(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
         val (listId, err) = ownedList(ctx, user); if (err != null) return err
         val itemId = uuidOrNull(ctx.pathParams["itemId"]) ?: return Err(400, "INVALID_INPUT", "invalid item id")

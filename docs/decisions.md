@@ -681,3 +681,23 @@ auto-created the duplicate again, so even the standalone merge-into endpoint did
   merge-into endpoint already allowed. Documented rather than gated.
 - **The survivor's name wins**: the first-picked item's ingredient is kept. Merging "white rice"
   first would instead teach that "rice" means "white rice".
+
+## Shopping-list items are drag-and-drop reorderable
+
+At the human's request.
+- **Pointer Events on a grip handle, hand-rolled.** HTML5 drag-and-drop doesn't fire on touch
+  screens, and a shopping list is mostly used on a phone. Pointer Events cover mouse and touch
+  in one code path, with `touch-action: none` on the grip only so the rest of the row still
+  scrolls. It's about 60 lines, so no library (e.g. SortableJS) was added; that would have
+  needed sign-off under the dependency policy. Arrow keys on the focused grip move an item one
+  place, for keyboard users.
+- **The API does the reordering.** The UI sends only "move item X before item Y" (or to the end:
+  `POST .../items/{itemId}/move {beforeItemId}`). The server rebuilds the order and renumbers
+  every item's `sort_order`, per the dumb-UI rule. Checked items still list after unchecked
+  ones, so a move reorders within that grouping.
+- **The drop position comes from where the pointer is released**, not the last move event.
+  Verifying touch in headless Chrome showed an emulated final `pointermove` arriving at half its
+  real Y (a Chrome touch-emulation quirk with `deviceScaleFactor: 2`). Using the `pointerup`
+  coordinates is also the more robust choice on real devices.
+- **Not built:** auto-scrolling while dragging near the screen edge, which matters on long
+  lists. Arrow keys work regardless.

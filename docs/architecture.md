@@ -278,7 +278,8 @@ larder/
                                        unknown/deleted/not-yours; empty meal plan 422), list, get,
                                        delete, item add/PATCH/delete, merge (remember=true also
                                        folds ingredients via IngredientRepository.mergeInto and
-                                       returns a `notice`); item endpoints return the whole list
+                                       returns a `notice`), move {beforeItemId} (reorder); item
+                                       endpoints return the whole list
         Display.kt                  display formatting (times, servings) — the API formats, the
                                        UI renders; see AGENTS.md
         MealPlanDto.kt              Phase 7 — request/response DTOs
@@ -431,7 +432,8 @@ larder/
                                              wrapper, same pattern as RecipeList's card grid)
         ShoppingLists.js                   Phase 9b — saved lists + "New from meal plan"
         ShoppingList.js                    Phase 9b — one list: check off, sources, remove, add,
-                                             delete, "Select to merge" (first pick survives)
+                                             delete, "Select to merge" (first pick survives), drag
+                                             to reorder by grip (Pointer Events; arrow keys too)
         MealPlan.js                        Phase 9b — the meal-plan list: title, label chip,
                                              API-formatted servings, remove
   db/

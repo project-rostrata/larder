@@ -341,7 +341,9 @@ views once Phases 7/8 land. No document-wide renumbering — later phases keep t
   bottom), shows each item's sources line underneath, and supports remove, add-by-hand, delete
   list (confirm dialog), and a "Select to merge" mode: pick two or more items, and the first one
   picked keeps its name. A "Remember for future lists" checkbox (on by default) also folds the
-  other items' ingredients into the survivor's, so new lists combine them automatically. The merge interaction was undesigned in the brief (section 5); this is
+  other items' ingredients into the survivor's, so new lists combine them automatically.
+  Items are drag-and-drop reorderable by a grip handle (mouse and touch via Pointer Events,
+  arrow keys for keyboard); the API does the reordering (`POST .../items/{itemId}/move`). The merge interaction was undesigned in the brief (section 5); this is
   the simplest workable version, easy to replace. There's no UI for generating from hand-picked
   recipes (the API supports `recipeIds`) or for renaming items yet.
 

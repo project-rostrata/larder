@@ -195,6 +195,26 @@ class ShoppingListRepository(private val database: Database) {
             },
         ) > 0
 
+    // Moves itemId to just before beforeItemId (null = the end), then renumbers every item's
+    // sort_order in the resulting display order. Checked items still list after unchecked ones
+    // (find() orders by checked first), so a move reorders within that grouping.
+    fun moveItem(listId: UUID, itemId: UUID, beforeItemId: UUID?) = database.transaction { tx ->
+        val ids = tx.queryList(
+            "SELECT id FROM shopping_list_items WHERE shopping_list_id = ? ORDER BY checked, sort_order, id",
+            bind = { it.setObject(1, listId) },
+            mapRow = { it.getObject("id", UUID::class.java) },
+        ).toMutableList()
+        ids.remove(itemId)
+        val at = beforeItemId?.let { ids.indexOf(it) }?.takeIf { it >= 0 } ?: ids.size
+        ids.add(at, itemId)
+        ids.forEachIndexed { index, id ->
+            tx.update(
+                "UPDATE shopping_list_items SET sort_order = ? WHERE id = ? AND shopping_list_id = ?",
+                bind = { stmt -> stmt.setInt(1, index); stmt.setObject(2, id); stmt.setObject(3, listId) },
+            )
+        }
+    }
+
     fun deleteItem(listId: UUID, itemId: UUID): Boolean =
         database.update(
             "DELETE FROM shopping_list_items WHERE id = ? AND shopping_list_id = ?",

@@ -39,6 +39,7 @@ export const TrashIcon = icon(() => [
   path({ d: "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" }),
 ]);
 export const CheckIcon = icon(() => [path({ d: "M20 6 9 17l-5-5" })]);
+export const GripIcon = icon(() => [path({ d: "M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" })]);
 export const LinkIcon = icon(() => [
   path({ d: "M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5" }),
   path({ d: "M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5" }),

@@ -125,6 +125,7 @@ fun main() {
     router.delete("/api/shopping-lists/:id", requireAuth(sessions, users, shoppingListDeleteHandler::handle))
     router.post("/api/shopping-lists/:id/items", requireAuth(sessions, users, shoppingListItemHandlers::add))
     router.post("/api/shopping-lists/:id/items/merge", requireAuth(sessions, users, shoppingListItemHandlers::merge))
+    router.post("/api/shopping-lists/:id/items/:itemId/move", requireAuth(sessions, users, shoppingListItemHandlers::move))
     router.patch("/api/shopping-lists/:id/items/:itemId", requireAuth(sessions, users, shoppingListItemHandlers::update))
     router.delete("/api/shopping-lists/:id/items/:itemId", requireAuth(sessions, users, shoppingListItemHandlers::delete))
     router.serveStatic(staticFileHandler::serve)

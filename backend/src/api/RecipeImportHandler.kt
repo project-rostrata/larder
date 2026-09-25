@@ -47,18 +47,7 @@ class RecipeImportHandler(
         val imported = extractRecipeFromHtml(html, request.url)
             ?: return Err(422, "IMPORT_FAILED", "No recipe data found at that URL")
 
-        val recipeRequest = RecipeRequest(
-            title = imported.title,
-            sourceUrl = imported.sourceUrl,
-            servings = imported.servings?.toDouble(),
-            servingsText = imported.servingsText,
-            prepTimeMinutes = imported.prepTimeMinutes,
-            cookTimeMinutes = imported.cookTimeMinutes,
-            totalTimeMinutes = imported.totalTimeMinutes,
-            tags = imported.tags,
-            instructions = imported.instructions,
-            ingredients = imported.ingredientRawTexts.map { RecipeIngredientInput(it) },
-        )
+        val recipeRequest = imported.toRecipeRequest()
         // Same validation as create/update, but any failure here means "the page's data isn't
         // usable" (422), not "the client's request to us was malformed" (400) -- the request
         // to *us* (just a URL) was perfectly well-formed.

@@ -4,7 +4,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import larder.db.IngredientRepository
 import larder.db.MealPlanRepository
-import larder.db.RecipeRepository
 import larder.db.RecipeSelection
 import larder.db.ShoppingListItemRow
 import larder.db.ShoppingListRepository
@@ -12,9 +11,7 @@ import larder.shopping.Combiner
 import larder.shopping.Rational
 import java.util.UUID
 
-private const val MAX_NAME_LENGTH = 100
 private const val MAX_ITEM_TEXT_LENGTH = 200
-private const val MAX_RECIPES = 200
 
 private fun uuidOrNull(raw: String?) = raw?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
@@ -35,71 +32,28 @@ private fun respondWithList(
 
 private fun quoted(names: List<String>) = names.joinToString(", ") { "“$it”" }
 
-class ShoppingListCreateHandler(
+// The Shopping tab: the current meal plan's list, built on first view after any plan change
+// (plan edits reset it -- see resetPlanShoppingList). No active plan or an empty one gives
+// `list: null` and a message to show instead.
+class CurrentShoppingListHandler(
     private val lists: ShoppingListRepository,
-    private val recipes: RecipeRepository,
     private val mealPlan: MealPlanRepository,
 ) {
     fun handle(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
-        val request = try {
-            Json.decodeFromString<ShoppingListCreateRequest>(ctx.readBody())
-        } catch (e: Exception) {
-            return Err(400, "INVALID_BODY", "Malformed request body")
+        val plan = mealPlan.activePlan(user.id)
+        val entries = if (plan == null) emptyList() else mealPlan.list(user.id)
+        if (plan == null || entries.isEmpty()) {
+            return Ok(Json.encodeToString(CurrentShoppingListResponse(null, "Your meal plan is empty. Add recipes to it from the Recipes tab.")))
         }
-        val givenName = request.name?.trim()?.takeIf { it.isNotEmpty() }
-        if (givenName != null && givenName.length > MAX_NAME_LENGTH) {
-            return Err(400, "INVALID_INPUT", "name must be at most $MAX_NAME_LENGTH characters")
+        val listId = lists.findIdForPlan(plan.id, user.id) ?: run {
+            val selections = entries.map { RecipeSelection(it.recipeId, Rational.approximate(it.servingsMultiplier), it.id) }
+            val items = combinerFor(lists).combine(lists.gatherLines(user.id, selections))
+            lists.createForPlan(user.id, plan.id, "Shopping list", items)
         }
-        if ((request.recipeIds != null) == request.fromMealPlan) {
-            return Err(400, "INVALID_INPUT", "send either recipeIds or fromMealPlan: true")
-        }
-
-        val selections: List<RecipeSelection>
-        val defaultName: String
-        if (request.fromMealPlan) {
-            val entries = mealPlan.list(user.id)
-            if (entries.isEmpty()) return Err(422, "MEAL_PLAN_EMPTY", "The meal plan has no recipes")
-            selections = entries.map { RecipeSelection(it.recipeId, Rational.approximate(it.servingsMultiplier), it.id) }
-            defaultName = "Meal plan"
-        } else {
-            val raw = request.recipeIds!!
-            if (raw.isEmpty() || raw.size > MAX_RECIPES) {
-                return Err(400, "INVALID_INPUT", "recipeIds must contain 1 to $MAX_RECIPES ids")
-            }
-            val ids = raw.map { uuidOrNull(it) ?: return Err(400, "INVALID_INPUT", "invalid recipe id: $it") }.distinct()
-            // Explicit ownership check for client-supplied recipe ids (AGENTS.md): any id that's
-            // unknown, deleted, or someone else's fails the whole request with one 403.
-            val titles = recipes.findActiveTitles(user.id, ids)
-            if (titles.size != ids.size) return Err(403, "NOT_OWNED", "Recipe does not belong to the authenticated user")
-            selections = ids.map { RecipeSelection(it, Rational.ONE, null) }
-            val names = ids.map { titles.getValue(it) }
-            defaultName = if (names.size <= 3) names.joinToString(", ") else "${names.take(3).joinToString(", ")} + ${names.size - 3} more"
-        }
-
-        val lines = lists.gatherLines(user.id, selections)
-        val items = combinerFor(lists).combine(lines)
-        val listId = lists.create(user.id, (givenName ?: defaultName).take(MAX_NAME_LENGTH), items)
-        return respondWithList(lists, listId, user.id)
-    }
-}
-
-class ShoppingListsListHandler(private val lists: ShoppingListRepository) {
-    fun handle(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> =
-        Ok(Json.encodeToString(ShoppingListsResponse(lists.listSummaries(user.id).map { it.toResponse() })))
-}
-
-class ShoppingListGetHandler(private val lists: ShoppingListRepository) {
-    fun handle(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
-        val id = uuidOrNull(ctx.pathParams["id"]) ?: return Err(400, "INVALID_INPUT", "invalid shopping list id")
-        return respondWithList(lists, id, user.id)
-    }
-}
-
-class ShoppingListDeleteHandler(private val lists: ShoppingListRepository) {
-    fun handle(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
-        val id = uuidOrNull(ctx.pathParams["id"]) ?: return Err(400, "INVALID_INPUT", "invalid shopping list id")
-        if (!lists.delete(id, user.id)) return Err(404, "NOT_FOUND", "Shopping list not found")
-        return Ok("""{"status":"ok"}""")
+        val detail = lists.find(listId, user.id) ?: return Err(404, "NOT_FOUND", "Shopping list not found")
+        val units = lists.units()
+        val list = detail.toResponse(Combiner(units, lists.conversions()), units)
+        return Ok(Json.encodeToString(CurrentShoppingListResponse(list, null)))
     }
 }
 

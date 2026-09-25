@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -120,11 +121,34 @@ private fun extractPrimaryAmount(amounts: JsonArray): Triple<Int?, Int?, String?
     // list, better to slightly over-buy than under-buy.
     val isRange = first["RANGE"]?.jsonPrimitive?.booleanOrNull == true
     val chosenQuantity = if (isRange) first["quantity_max"] else first["quantity"]
-    val quantityObj = chosenQuantity.asObjectOrNull()
-
-    val numerator = quantityObj?.get("numerator")?.jsonPrimitive?.intOrNull
-    val denominator = quantityObj?.get("denominator")?.jsonPrimitive?.intOrNull
+    val (numerator, denominator) = quantityFraction(chosenQuantity) ?: (null to null)
     val unit = first["unit"]?.jsonPrimitive?.contentOrNull
 
     return Triple(numerator, denominator, unit)
+}
+
+private val SPACED_RANGE = Regex("""^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$""")
+
+// Normally a {numerator, denominator} object. But when the upstream library can't turn the
+// quantity into a number it passes the text through as a string -- confirmed on a real
+// Nextcloud Cookbook line, "1.5 - 2 cups milk", which comes back as "1.5-2" with RANGE false.
+// A plain decimal string, or such a range (taking the high end, the same over-buy rule as
+// real RANGE amounts), is still read; anything else stays unquantified.
+private fun quantityFraction(element: JsonElement?): Pair<Int, Int>? {
+    element.asObjectOrNull()?.let { obj ->
+        val n = obj["numerator"]?.jsonPrimitive?.intOrNull ?: return null
+        val d = obj["denominator"]?.jsonPrimitive?.intOrNull ?: return null
+        return n to d
+    }
+    val text = (element as? JsonPrimitive)?.contentOrNull ?: return null
+    val value = (SPACED_RANGE.find(text)?.groupValues?.get(2) ?: text.trim()).toBigDecimalOrNull() ?: return null
+    if (value.signum() <= 0) return null
+    val scaled = value.stripTrailingZeros().let { if (it.scale() < 0) it.setScale(0) else it }
+    val num = scaled.unscaledValue()
+    val den = java.math.BigInteger.TEN.pow(scaled.scale())
+    val g = num.gcd(den)
+    val n = num.divide(g)
+    val d = den.divide(g)
+    if (n.bitLength() >= 32 || d.bitLength() >= 32) return null
+    return n.toInt() to d.toInt()
 }

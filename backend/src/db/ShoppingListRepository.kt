@@ -50,6 +50,29 @@ data class RecipeSelection(val recipeId: UUID, val multiplier: Rational, val mea
 
 const val MANUAL_SOURCE_TITLE = "Added manually"
 
+// The shopping list is derived from the current meal plan and is reset -- deleted, to be
+// rebuilt on next view -- whenever the plan's contents change. These run inside the caller's
+// transaction so the reset commits atomically with the change that caused it.
+internal fun resetPlanShoppingList(tx: Transaction, mealPlanId: UUID) {
+    tx.update("DELETE FROM shopping_lists WHERE meal_plan_id = ?", bind = { it.setObject(1, mealPlanId) })
+}
+
+// A recipe edit or deletion changes what its active plan's list should contain.
+internal fun resetShoppingListsForRecipe(tx: Transaction, recipeId: UUID) {
+    tx.update(
+        """
+        DELETE FROM shopping_lists WHERE meal_plan_id IN (
+            SELECT e.meal_plan_id FROM meal_plan_entries e
+            JOIN meal_plans p ON p.id = e.meal_plan_id
+            WHERE e.recipe_id = ? AND p.archived_at IS NULL
+        )
+        """.trimIndent(),
+        bind = { it.setObject(1, recipeId) },
+    )
+}
+
+private const val UNIQUE_VIOLATION = "23505"
+
 class ShoppingListRepository(private val database: Database) {
 
     fun units(): Map<UUID, UnitInfo> =
@@ -121,11 +144,30 @@ class ShoppingListRepository(private val database: Database) {
         }
     }
 
-    fun create(ownerId: UUID, name: String, items: List<CombinedItem>): UUID = database.transaction { tx ->
+    fun findIdForPlan(mealPlanId: UUID, ownerId: UUID): UUID? =
+        database.queryOneOrNull(
+            "SELECT id FROM shopping_lists WHERE meal_plan_id = ? AND owner_id = ?",
+            bind = { stmt -> stmt.setObject(1, mealPlanId); stmt.setObject(2, ownerId) },
+            mapRow = { it.getObject("id", UUID::class.java) },
+        )
+
+    // Builds the plan's list. Two concurrent first views can race here; the unique index on
+    // meal_plan_id lets exactly one insert win, and the loser returns the winner's list.
+    fun createForPlan(ownerId: UUID, mealPlanId: UUID, name: String, items: List<CombinedItem>): UUID =
+        try {
+            create(ownerId, name, items, mealPlanId)
+        } catch (e: java.sql.SQLException) {
+            if (e.sqlState != UNIQUE_VIOLATION) throw e
+            findIdForPlan(mealPlanId, ownerId) ?: throw e
+        }
+
+    private fun create(ownerId: UUID, name: String, items: List<CombinedItem>, mealPlanId: UUID): UUID = database.transaction { tx ->
         val listId = UUID.randomUUID()
         tx.update(
-            "INSERT INTO shopping_lists (id, owner_id, name) VALUES (?, ?, ?)",
-            bind = { stmt -> stmt.setObject(1, listId); stmt.setObject(2, ownerId); stmt.setString(3, name) },
+            "INSERT INTO shopping_lists (id, owner_id, name, meal_plan_id) VALUES (?, ?, ?, ?)",
+            bind = { stmt ->
+                stmt.setObject(1, listId); stmt.setObject(2, ownerId); stmt.setString(3, name); stmt.setObject(4, mealPlanId)
+            },
         )
         items.forEachIndexed { index, item ->
             val itemId = insertItem(tx, listId, item.ingredientId, item.name, item.quantity?.let(::storable), item.unitId, index)
@@ -133,13 +175,6 @@ class ShoppingListRepository(private val database: Database) {
         }
         listId
     }
-
-    fun listSummaries(ownerId: UUID): List<ShoppingListSummaryRow> =
-        database.queryList(
-            "$SUMMARY_SELECT WHERE l.owner_id = ? GROUP BY l.id ORDER BY l.created_at DESC",
-            bind = { it.setObject(1, ownerId) },
-            mapRow = ::toSummary,
-        )
 
     fun find(listId: UUID, ownerId: UUID): ShoppingListDetail? {
         val summary = database.queryOneOrNull(
@@ -164,12 +199,6 @@ class ShoppingListRepository(private val database: Database) {
         )
         return ShoppingListDetail(summary, items, sources)
     }
-
-    fun delete(listId: UUID, ownerId: UUID): Boolean =
-        database.update(
-            "DELETE FROM shopping_lists WHERE id = ? AND owner_id = ?",
-            bind = { stmt -> stmt.setObject(1, listId); stmt.setObject(2, ownerId) },
-        ) > 0
 
     // Manual items go to the end of the unchecked section.
     fun addManualItem(listId: UUID, text: String): UUID = database.transaction { tx ->

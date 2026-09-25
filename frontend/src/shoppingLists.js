@@ -1,52 +1,26 @@
 import { state, showError, showNotice } from "./state.js";
 import { api, ApiError } from "./api.js";
-import { navigate } from "./router.js";
 
 const message = (err, fallback) => (err instanceof ApiError ? err.message : fallback);
 
-export async function refreshShoppingLists() {
-  state.shoppingListsLoading.val = true;
-  try {
-    state.shoppingLists.val = (await api.listShoppingLists()).shoppingLists;
-  } catch (err) {
-    showError(message(err, "Could not load shopping lists"));
-  } finally {
-    state.shoppingListsLoading.val = false;
-  }
-}
-
-export async function loadShoppingList(id) {
+// The Shopping tab's list: always the current meal plan's, rebuilt by the API after any plan
+// change.
+export async function loadCurrentShoppingList() {
   state.currentShoppingListLoading.val = true;
-  state.currentShoppingList.val = null;
   try {
-    state.currentShoppingList.val = await api.getShoppingList(id);
+    const { list, message: emptyMessage } = await api.getCurrentShoppingList();
+    state.currentShoppingList.val = list;
+    state.currentShoppingListMessage.val = emptyMessage;
   } catch (err) {
-    showError(message(err, "Could not load shopping list"));
+    showError(message(err, "Could not load the shopping list"));
   } finally {
     state.currentShoppingListLoading.val = false;
   }
 }
 
-export async function createFromMealPlan() {
-  try {
-    const list = await api.createShoppingList({ fromMealPlan: true });
-    navigate("shopping-list", { id: list.id });
-  } catch (err) {
-    showError(message(err, "Could not create shopping list"));
-  }
-}
-
-export async function deleteShoppingList(list) {
-  try {
-    await api.deleteShoppingList(list.id);
-    navigate("shopping-lists");
-  } catch (err) {
-    showError(message(err, "Could not delete shopping list"));
-  }
-}
-
 // Every item endpoint returns the whole updated list; it simply replaces the current one. A
-// merge's response may carry a notice (what was remembered), shown as-is.
+// merge's response may carry a notice (what was remembered), shown as-is. If the list was reset
+// meanwhile (the plan changed in another tab), a 404 just reloads the current list.
 // Resolves true on success so callers can reset local UI (e.g. clear an input).
 export async function applyItemChange(request) {
   try {
@@ -55,6 +29,10 @@ export async function applyItemChange(request) {
     if (list.notice) showNotice(list.notice);
     return true;
   } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      await loadCurrentShoppingList();
+      return false;
+    }
     showError(message(err, "Could not update shopping list"));
     return false;
   }

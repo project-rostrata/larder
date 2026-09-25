@@ -41,15 +41,16 @@ export const api = {
   updateRecipe: (id, body) => request("PUT", `/api/recipes/${id}`, body),
   deleteRecipe: (id) => request("DELETE", `/api/recipes/${id}`),
   importRecipe: (url) => request("POST", "/api/recipes/import", { url }),
+  importRecipeFiles: (files) => request("POST", "/api/recipes/import-files", { files }),
 
   listMealPlan: () => request("GET", "/api/meal-plan"),
   addToMealPlan: (body) => request("POST", "/api/meal-plan", body),
   removeFromMealPlan: (id) => request("DELETE", `/api/meal-plan/${id}`),
+  startMealPlan: (body) => request("POST", "/api/meal-plans", body),
+  listMealPlanHistory: () => request("GET", "/api/meal-plans"),
+  getMealPlan: (id) => request("GET", `/api/meal-plans/${id}`),
 
-  listShoppingLists: () => request("GET", "/api/shopping-lists"),
-  getShoppingList: (id) => request("GET", `/api/shopping-lists/${id}`),
-  createShoppingList: (body) => request("POST", "/api/shopping-lists", body),
-  deleteShoppingList: (id) => request("DELETE", `/api/shopping-lists/${id}`),
+  getCurrentShoppingList: () => request("GET", "/api/shopping-list"),
   addShoppingItem: (id, text) => request("POST", `/api/shopping-lists/${id}/items`, { text }),
   updateShoppingItem: (id, itemId, body) => request("PATCH", `/api/shopping-lists/${id}/items/${itemId}`, body),
   moveShoppingItem: (id, itemId, beforeItemId) =>

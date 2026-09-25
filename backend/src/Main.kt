@@ -1,19 +1,20 @@
 import com.sun.net.httpserver.HttpServer
+import larder.api.CurrentShoppingListHandler
 import larder.api.IngredientMergeHandler
 import larder.api.LoginHandler
 import larder.api.MealPlanCreateHandler
 import larder.api.MealPlanDeleteHandler
+import larder.api.MealPlanGetHandler
+import larder.api.MealPlanHistoryHandler
 import larder.api.MealPlanListHandler
-import larder.api.ShoppingListCreateHandler
-import larder.api.ShoppingListDeleteHandler
-import larder.api.ShoppingListGetHandler
+import larder.api.MealPlanStartHandler
 import larder.api.ShoppingListItemHandlers
-import larder.api.ShoppingListsListHandler
 import larder.api.LogoutHandler
 import larder.api.MeHandler
 import larder.api.RecipeCreateHandler
 import larder.api.RecipeDeleteHandler
 import larder.api.RecipeGetHandler
+import larder.api.RecipeFileImportHandler
 import larder.api.RecipeImportHandler
 import larder.api.RecipeUpdateHandler
 import larder.api.RecipesListHandler
@@ -88,14 +89,15 @@ fun main() {
     val recipeUpdateHandler = RecipeUpdateHandler(recipes, ingredientParser, ingredientResolver)
     val recipeDeleteHandler = RecipeDeleteHandler(recipes)
     val recipeImportHandler = RecipeImportHandler(recipes, ingredientParser, ingredientResolver)
+    val recipeFileImportHandler = RecipeFileImportHandler(recipes, ingredientParser, ingredientResolver)
     val ingredientMergeHandler = IngredientMergeHandler(ingredients)
     val mealPlanListHandler = MealPlanListHandler(mealPlan)
     val mealPlanCreateHandler = MealPlanCreateHandler(mealPlan, recipes)
     val mealPlanDeleteHandler = MealPlanDeleteHandler(mealPlan)
-    val shoppingListCreateHandler = ShoppingListCreateHandler(shoppingLists, recipes, mealPlan)
-    val shoppingListsListHandler = ShoppingListsListHandler(shoppingLists)
-    val shoppingListGetHandler = ShoppingListGetHandler(shoppingLists)
-    val shoppingListDeleteHandler = ShoppingListDeleteHandler(shoppingLists)
+    val mealPlanStartHandler = MealPlanStartHandler(mealPlan)
+    val mealPlanHistoryHandler = MealPlanHistoryHandler(mealPlan)
+    val mealPlanGetHandler = MealPlanGetHandler(mealPlan)
+    val currentShoppingListHandler = CurrentShoppingListHandler(shoppingLists, mealPlan)
     val shoppingListItemHandlers = ShoppingListItemHandlers(shoppingLists, ingredients)
     val staticFileHandler = StaticFileHandler(Path.of(frontendDir))
 
@@ -110,6 +112,7 @@ fun main() {
     router.get("/api/recipes/:id", requireAuth(sessions, users, recipeGetHandler::handle))
     router.post("/api/recipes", requireAuth(sessions, users, recipeCreateHandler::handle))
     router.post("/api/recipes/import", requireAuth(sessions, users, recipeImportHandler::handle))
+    router.post("/api/recipes/import-files", requireAuth(sessions, users, recipeFileImportHandler::handle))
     router.put("/api/recipes/:id", requireAuth(sessions, users, recipeUpdateHandler::handle))
     router.delete("/api/recipes/:id", requireAuth(sessions, users, recipeDeleteHandler::handle))
     router.post(
@@ -119,10 +122,10 @@ fun main() {
     router.get("/api/meal-plan", requireAuth(sessions, users, mealPlanListHandler::handle))
     router.post("/api/meal-plan", requireAuth(sessions, users, mealPlanCreateHandler::handle))
     router.delete("/api/meal-plan/:id", requireAuth(sessions, users, mealPlanDeleteHandler::handle))
-    router.get("/api/shopping-lists", requireAuth(sessions, users, shoppingListsListHandler::handle))
-    router.post("/api/shopping-lists", requireAuth(sessions, users, shoppingListCreateHandler::handle))
-    router.get("/api/shopping-lists/:id", requireAuth(sessions, users, shoppingListGetHandler::handle))
-    router.delete("/api/shopping-lists/:id", requireAuth(sessions, users, shoppingListDeleteHandler::handle))
+    router.get("/api/meal-plans", requireAuth(sessions, users, mealPlanHistoryHandler::handle))
+    router.post("/api/meal-plans", requireAuth(sessions, users, mealPlanStartHandler::handle))
+    router.get("/api/meal-plans/:id", requireAuth(sessions, users, mealPlanGetHandler::handle))
+    router.get("/api/shopping-list", requireAuth(sessions, users, currentShoppingListHandler::handle))
     router.post("/api/shopping-lists/:id/items", requireAuth(sessions, users, shoppingListItemHandlers::add))
     router.post("/api/shopping-lists/:id/items/merge", requireAuth(sessions, users, shoppingListItemHandlers::merge))
     router.post("/api/shopping-lists/:id/items/:itemId/move", requireAuth(sessions, users, shoppingListItemHandlers::move))

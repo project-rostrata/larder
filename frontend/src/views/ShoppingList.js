@@ -4,7 +4,8 @@ import { api } from "../api.js";
 import { applyItemChange } from "../shoppingLists.js";
 import { TopBar } from "../components/TopBar.js";
 import { DialogHost } from "../components/DialogHost.js";
-import { CheckIcon, CloseIcon, TrashIcon, PlusIcon, GripIcon } from "../icons.js";
+import { navigate } from "../router.js";
+import { CheckIcon, CloseIcon, PlusIcon, GripIcon } from "../icons.js";
 
 const { div, h1, span, button, form, input, label } = van.tags;
 
@@ -174,7 +175,7 @@ export function ShoppingList() {
       div(
         {},
         h1({ class: "recipe-detail-title" }, list.name),
-        div({ class: "recipe-detail-meta" }, `${list.createdDisplay} · ${list.progressDisplay}`),
+        div({ class: "recipe-detail-meta" }, list.progressDisplay),
       ),
       div(
         { class: "recipe-detail-actions" },
@@ -187,14 +188,7 @@ export function ShoppingList() {
               () => `Merge (${selected.val.length})`,
             ),
           )
-          : div(
-            { class: "recipe-detail-actions" },
-            button({ class: "btn-ghost", onclick: () => { selecting.val = true; } }, "Select to merge"),
-            button(
-              { class: "btn-danger", onclick: () => { state.activeDialog.val = { type: "confirmDeleteList", list }; } },
-              TrashIcon(), "Delete",
-            ),
-          )),
+          : button({ class: "btn-ghost", onclick: () => { selecting.val = true; } }, "Select to merge")),
       ),
     );
   }
@@ -206,11 +200,18 @@ export function ShoppingList() {
       { class: "meal-plan" },
       () => {
         const list = state.currentShoppingList.val;
-        if (!list) {
-          return div({ class: "empty-state" }, state.currentShoppingListLoading.val ? "Loading…" : "Shopping list not found.");
-        }
-        return Header(list);
+        if (list) return Header(list);
+        if (state.currentShoppingListLoading.val) return div({ class: "empty-state" }, "Loading…");
+        return div(
+          { class: "empty-state" },
+          div({}, state.currentShoppingListMessage.val ?? "No shopping list."),
+          button({ class: "btn-ghost shop-empty-action", onclick: () => navigate("recipes") }, "Go to recipes"),
+        );
       },
+      // Hidden (not re-rendered) while there's no list, so the add-item input keeps its text and
+      // focus across the list updates every item change causes.
+      div(
+        { style: () => (state.currentShoppingList.val ? "" : "display:none") },
       () => (selecting.val
         ? div(
           { class: "shop-hint" },
@@ -241,6 +242,7 @@ export function ShoppingList() {
           if (list.items.length === 0) return div({ class: "empty-state" }, "This list is empty.");
           return div({ style: "display:contents" }, ...list.items.map((item) => Item(list, item)));
         },
+      ),
       ),
     ),
     DialogHost(),

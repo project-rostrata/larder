@@ -701,3 +701,90 @@ At the human's request.
   coordinates is also the more robust choice on real devices.
 - **Not built:** auto-scrolling while dragging near the screen edge, which matters on long
   lists. Arrow keys work regardless.
+
+## Meal plans have a history
+
+The human's direction: split the recipes view into the current meal plan (top) and all recipes;
+the Meal plans tab shows past plans; starting a new plan asks before replacing the active one,
+and on yes archives it. Choices asked and answered: a past plan can be viewed and restored ("Use
+again"); a deleted recipe in history is shown marked "(deleted)" rather than hidden; past plans
+are identified by date rather than a name; recipes are added from a "+ Plan" button on each card.
+
+- **Data**: new `meal_plans` table (migration `0004`), entries get `meal_plan_id`. "At most one
+  active plan per user" is a partial unique index on `owner_id WHERE archived_at IS NULL`, so it
+  holds even under concurrent requests. The active plan is created lazily on the first add;
+  the migration turns each user's existing entries into their active plan.
+- **Starting a new plan** (`POST /api/meal-plans {replace?, fromPlanId?}`): if the current plan
+  has recipes and `replace` isn't set, the API returns 409 `ACTIVE_PLAN_EXISTS` with a
+  ready-to-show message; the UI puts that message in a confirm dialog and retries with
+  `replace: true`. A plan with no entries is reused instead of archived, so history never
+  fills with empty plans. A plan with entries is always archived, even if every one of its
+  recipes has since been deleted: those entries are exactly the history soft delete exists to
+  keep, so nothing is ever deleted here.
+- **Deleted recipes**: the current plan still hides them (the earlier API-filters rule). In
+  history the API returns them as "Chili (deleted)" with no `recipeId`, so the UI renders a
+  plain title with no link and no flag to check. "Use again" skips them.
+- **History is read-only**: removing an entry only works on the active plan (404 otherwise).
+- **Dates**: "Sep 18 – Sep 25, 2026" (started to archived), "Sep 25, 2026" for a same-day
+  plan, "Started …" for the active one. Server zone, per the `TZ` setting.
+- **Shopping lists** built "from the meal plan" use the current plan only.
+- **Card markup**: a recipe card is now a `div` holding two buttons (open, "+ Plan"), since a
+  button can't contain another.
+
+## One-tap planning; the Shopping tab is just the current plan's list
+
+Both at the human's direction.
+
+- **No add-to-plan dialog.** "+ Plan" on a card and "Add to meal plan" on the recipe page add the
+  recipe as written, with no label and no scaling. The API still accepts an optional
+  `label`/`servings`/`servingsMultiplier`, and existing entries that have them still display
+  them; only the UI stopped asking.
+- **One shopping list, the current plan's.** No saved or historical lists. Asked what should
+  happen when the plan changes after the list exists, the human chose "always rebuild, reset
+  everything" over keeping checked items across rebuilds.
+  - Implemented as a reset, not staleness tracking: any change deletes the plan's list, in the
+    same transaction as the change. `GET /api/shopping-list` rebuilds it on the next view.
+  - Triggers: an entry added or removed, a recipe in the active plan edited or soft-deleted, or a
+    new plan started (the outgoing plan's list isn't kept).
+  - Remembered merges survive a reset, since they live in the ingredient vocabulary. One-off
+    merges, checks, hand-added items, and order don't.
+  - `shopping_lists.meal_plan_id` has a partial unique index, so two simultaneous first views
+    can't build two lists: the loser reads the winner's (verified with 6 concurrent requests).
+  - Lists from before migration `0005` have no plan, aren't shown anywhere, and were left in
+    place rather than deleted.
+  - Removed: `GET/POST /api/shopping-lists` and `GET/DELETE /api/shopping-lists/{id}`, which
+    includes generating a list from hand-picked recipes. The item endpoints are unchanged.
+- **Found while testing, not fixed:** "1 onion" and "2 onions" land on different items, because
+  the parser names them "onion" and "onions" and each becomes its own ingredient. A remembered
+  merge fixes it once per pair. A real fix would singularize names when resolving ingredients;
+  that's a candidate follow-up.
+
+## Nextcloud Cookbook import, and recipe notes
+
+At the human's request, with their own exported `recipe.json` as the reference. Asked and
+answered: files are picked individually (not a zip of the Recipes folder); description and tips
+get a new Notes field (rather than being appended to the instructions or dropped); and
+re-importing always creates new copies (no de-duplication).
+
+- **Reuses the schema.org mapper.** Nextcloud Cookbook stores each recipe as a schema.org Recipe
+  object, the same vocabulary URL import reads from JSON-LD. `extractRecipeFromJson()` feeds the
+  same mapper, so both import paths gained two things:
+  - `recipeCategory` becomes a tag (the food.com fixture's expected tags changed accordingly).
+  - `description` and `tool` become notes. `tool` is "tools" in schema.org, but Nextcloud
+    Cookbook users often keep tips there, so full-sentence entries become paragraphs and short
+    ones become a "Tools: …" line.
+  - The file's own `url` becomes the source URL when it's absolute http(s).
+- **One request, per-file results.** The browser reads the picked files as text and posts them
+  together. Each file imports or fails on its own ("Not a recipe JSON file", "title is
+  required", …), and the API returns a ready-to-show summary. The dialog closes with a notice
+  when everything worked, and stays open listing the failures otherwise.
+- **Notes** (migration `0006`): plain text, paragraphs separated by a blank line, max 20,000
+  characters. The API returns them pre-split as `display.notes`.
+- **Parser fix found through the human's data:** "1.5 - 2 cups milk" (spaced range) comes back
+  from the upstream parsing library as the *string* "1.5-2" with `RANGE: false`, so the Kotlin
+  side dropped the quantity. String quantities are now read too: a decimal, or a spaced range
+  taking the high end, the same buy-slightly-more rule as real ranges. Test built from the real
+  captured sidecar response. Unicode fractions (½, ⅛) already parsed correctly.
+- **Browser-test note:** `DOM.setFileInputFiles` plus `File.text()` crashes this headless
+  shell's renderer, so the import suite builds `File` objects in the page via `DataTransfer`
+  instead. Same app code path.

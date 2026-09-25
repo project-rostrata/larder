@@ -73,3 +73,41 @@ class MealPlanDeleteHandler(private val mealPlan: MealPlanRepository) {
         return Ok("""{"status":"ok"}""")
     }
 }
+
+class MealPlanStartHandler(private val mealPlan: MealPlanRepository) {
+    fun handle(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
+        val request = try {
+            Json.decodeFromString<MealPlanStartRequest>(ctx.readBody().ifBlank { "{}" })
+        } catch (e: Exception) {
+            return Err(400, "INVALID_BODY", "Malformed request body")
+        }
+        val fromPlanId = request.fromPlanId?.let {
+            runCatching { UUID.fromString(it) }.getOrNull() ?: return Err(400, "INVALID_INPUT", "invalid fromPlanId")
+        }
+        if (fromPlanId != null) {
+            val (plan, _) = mealPlan.find(fromPlanId, user.id) ?: return Err(404, "NOT_FOUND", "Meal plan not found")
+            if (plan.archivedAt == null) return Err(400, "INVALID_INPUT", "fromPlanId must be a past plan")
+        }
+        val current = mealPlan.activeEntryCount(user.id)
+        if (current > 0 && !request.replace) {
+            val recipes = if (current == 1) "1 recipe" else "$current recipes"
+            return Err(409, "ACTIVE_PLAN_EXISTS", "Your current meal plan has $recipes. Replace it? It will be moved to history.")
+        }
+        mealPlan.startNew(user.id, fromPlanId)
+        return Ok(Json.encodeToString(MealPlanListResponse(mealPlan.list(user.id).map { it.toResponse() })))
+    }
+}
+
+class MealPlanHistoryHandler(private val mealPlan: MealPlanRepository) {
+    fun handle(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> =
+        Ok(Json.encodeToString(MealPlanHistoryResponse(mealPlan.history(user.id).map { (plan, entries) -> plan.toSummary(entries) })))
+}
+
+class MealPlanGetHandler(private val mealPlan: MealPlanRepository) {
+    fun handle(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
+        val id = ctx.pathParams["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            ?: return Err(400, "INVALID_INPUT", "invalid meal plan id")
+        val (plan, entries) = mealPlan.find(id, user.id) ?: return Err(404, "NOT_FOUND", "Meal plan not found")
+        return Ok(Json.encodeToString(plan.toDetail(entries)))
+    }
+}

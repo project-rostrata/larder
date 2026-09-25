@@ -28,6 +28,7 @@ data class RecipeResponse(
     val totalTimeMinutes: Int?,
     val tags: List<String>,
     val instructions: List<String>,
+    val notes: String?,
     val ingredients: List<RecipeIngredientResponse>,
     val createdAt: String,
     val updatedAt: String,
@@ -61,6 +62,7 @@ data class RecipeWriteResponse(
     val totalTimeMinutes: Int?,
     val tags: List<String>,
     val instructions: List<String>,
+    val notes: String?,
     val ingredients: List<RecipeIngredientWriteResult>,
     val createdAt: String,
     val updatedAt: String,
@@ -77,6 +79,7 @@ fun RecipeRow.toResponse(ingredients: List<RecipeIngredientRow>): RecipeResponse
     totalTimeMinutes = totalTimeMinutes,
     tags = tags,
     instructions = instructions,
+    notes = notes,
     ingredients = ingredients.map {
         RecipeIngredientResponse(
             id = it.id.toString(),
@@ -106,6 +109,7 @@ fun PersistedRecipe.toWriteResponse(newlyCreatedFlags: List<Boolean>): RecipeWri
     totalTimeMinutes = recipe.totalTimeMinutes,
     tags = recipe.tags,
     instructions = recipe.instructions,
+    notes = recipe.notes,
     ingredients = ingredients.zip(newlyCreatedFlags).map { (row, wasNew) ->
         RecipeIngredientWriteResult(
             id = row.id.toString(),

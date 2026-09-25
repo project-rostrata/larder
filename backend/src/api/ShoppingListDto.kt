@@ -3,7 +3,6 @@ package larder.api
 import kotlinx.serialization.Serializable
 import larder.db.ShoppingListDetail
 import larder.db.ShoppingListSourceRow
-import larder.db.ShoppingListSummaryRow
 import larder.shopping.Combiner
 import larder.shopping.SourceLine
 import larder.shopping.UnitInfo
@@ -12,13 +11,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-
-@Serializable
-data class ShoppingListCreateRequest(
-    val name: String? = null,
-    val recipeIds: List<String>? = null,
-    val fromMealPlan: Boolean = false,
-)
 
 @Serializable
 data class ShoppingListItemCreateRequest(val text: String)
@@ -32,17 +24,6 @@ data class ShoppingListItemMoveRequest(val beforeItemId: String? = null)
 
 @Serializable
 data class ShoppingListMergeRequest(val itemIds: List<String>, val remember: Boolean = false)
-
-@Serializable
-data class ShoppingListSummaryResponse(
-    val id: String,
-    val name: String,
-    val createdAt: String,
-    val itemCount: Int,
-    val checkedCount: Int,
-    val createdDisplay: String,  // "Sep 24, 2026"
-    val progressDisplay: String, // "3 of 7 checked"
-)
 
 @Serializable
 data class ShoppingListSourceResponse(
@@ -79,8 +60,9 @@ data class ShoppingListResponse(
     val notice: String? = null,
 )
 
+// `list` is null when the current meal plan is empty; `message` then says what to do.
 @Serializable
-data class ShoppingListsResponse(val shoppingLists: List<ShoppingListSummaryResponse>)
+data class CurrentShoppingListResponse(val list: ShoppingListResponse?, val message: String?)
 
 private val CREATED_FORMAT = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
 
@@ -93,15 +75,6 @@ private fun formatProgress(itemCount: Int, checkedCount: Int) = when {
     else -> "$checkedCount of $itemCount checked"
 }
 
-fun ShoppingListSummaryRow.toResponse() = ShoppingListSummaryResponse(
-    id = id.toString(),
-    name = name,
-    createdAt = createdAt.toString(),
-    itemCount = itemCount,
-    checkedCount = checkedCount,
-    createdDisplay = formatCreated(createdAt),
-    progressDisplay = formatProgress(itemCount, checkedCount),
-)
 
 fun ShoppingListDetail.toResponse(combiner: Combiner, units: Map<java.util.UUID, UnitInfo>): ShoppingListResponse {
     val sourcesByItem = sources.groupBy { it.itemId }

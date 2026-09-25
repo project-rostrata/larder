@@ -9,8 +9,8 @@
 // reason about here.
 import { state } from "./state.js";
 import { refreshRecipeList, loadRecipe } from "./recipes.js";
-import { refreshMealPlan } from "./mealPlan.js";
-import { refreshShoppingLists, loadShoppingList } from "./shoppingLists.js";
+import { refreshMealPlan, refreshMealPlanHistory, loadMealPlan } from "./mealPlan.js";
+import { loadCurrentShoppingList } from "./shoppingLists.js";
 
 function paramsFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -28,14 +28,15 @@ export function loadForCurrentView() {
   if (!state.user.val) return;
   if (state.view.val === "recipes") {
     refreshRecipeList();
+    refreshMealPlan();
   } else if (state.view.val === "recipe" || state.view.val === "recipe-edit") {
     if (state.currentId.val) loadRecipe(state.currentId.val);
+  } else if (state.view.val === "meal-plans") {
+    refreshMealPlanHistory();
   } else if (state.view.val === "meal-plan") {
-    refreshMealPlan();
-  } else if (state.view.val === "shopping-lists") {
-    refreshShoppingLists();
-  } else if (state.view.val === "shopping-list") {
-    if (state.currentId.val) loadShoppingList(state.currentId.val);
+    if (state.currentId.val) loadMealPlan(state.currentId.val);
+  } else if (state.view.val === "shopping") {
+    loadCurrentShoppingList();
   }
 }
 

@@ -1,11 +1,12 @@
 import van from "../../lib/van-1.6.1.js";
 import { state } from "../state.js";
 import { navigate } from "../router.js";
+import { planRecipe } from "../mealPlan.js";
 import { TopBar } from "../components/TopBar.js";
 import { DialogHost } from "../components/DialogHost.js";
 import { EditIcon, TrashIcon, LinkIcon, PlusIcon } from "../icons.js";
 
-const { div, h1, h2, a, span, ul, li, ol, button } = van.tags;
+const { div, h1, h2, a, span, ul, li, ol, button, p } = van.tags;
 
 function MetaLine(recipe) {
   if (!recipe.display.details.length) return null;
@@ -20,6 +21,15 @@ function Ingredients(recipe) {
     // raw_text is the display default (see AGENTS.md/PROJECT_BRIEF.md) -- what was typed or
     // imported is what's shown, not a reconstructed "quantity + unit + name" sentence.
     ul({ class: "ingredient-list" }, recipe.ingredients.map((ing) => li(ing.rawText))),
+  );
+}
+
+function Notes(recipe) {
+  if (!recipe.display.notes.length) return null;
+  return div(
+    {},
+    h2({ class: "recipe-section-title" }, "Notes"),
+    div({ class: "recipe-notes" }, recipe.display.notes.map((para) => p(para))),
   );
 }
 
@@ -51,7 +61,7 @@ function DetailContent(recipe) {
       div(
         { class: "recipe-detail-actions" },
         button(
-          { class: "btn-primary", onclick: () => { state.activeDialog.val = { type: "addToMealPlan", recipe }; } },
+          { class: "btn-primary", onclick: () => planRecipe(recipe) },
           PlusIcon(), "Add to meal plan",
         ),
         button(
@@ -66,6 +76,7 @@ function DetailContent(recipe) {
     ),
     Ingredients(recipe),
     Instructions(recipe),
+    Notes(recipe),
   );
 }
 

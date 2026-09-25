@@ -274,20 +274,26 @@ larder/
                                             or its data fails normal recipe validation)
         ShoppingListDto.kt          Phase 8 — request/response DTOs; builds each item's display
                                        string ("4 1/8 cups flour", "garlic (2 cups + 3 cloves)")
-        ShoppingListHandlers.kt     Phase 8 — create (recipeIds ownership-checked: one 403 for
-                                       unknown/deleted/not-yours; empty meal plan 422), list, get,
-                                       delete, item add/PATCH/delete, merge (remember=true also
+        ShoppingListHandlers.kt     GET /api/shopping-list: the current plan's list, built on first
+                                       view after any plan change (null + message if the plan is
+                                       empty); item add/PATCH/delete, merge (remember=true also
                                        folds ingredients via IngredientRepository.mergeInto and
                                        returns a `notice`), move {beforeItemId} (reorder); item
                                        endpoints return the whole list
         Display.kt                  display formatting (times, servings) — the API formats, the
                                        UI renders; see AGENTS.md
         MealPlanDto.kt              Phase 7 — request/response DTOs
-        MealPlanHandlers.kt          Phase 7 — GET /api/meal-plan (whole list, soft-deleted
+        MealPlanHandlers.kt          GET/POST /api/meal-plans (history / start new: 409
+                                       ACTIVE_PLAN_EXISTS unless replace; fromPlanId = use again),
+                                       GET /api/meal-plans/{id}. Phase 7 — GET /api/meal-plan (active plan, soft-deleted
                                        recipes filtered out), POST /api/meal-plan (optional label,
                                        trimmed, max 100 chars; `servings` or `servingsMultiplier`;
                                        unknown, deleted, or not-yours recipe_id is one 403),
                                        DELETE /api/meal-plan/{id}
+        RecipeFileImportHandler.kt  POST /api/recipes/import-files: recipe JSON files (Nextcloud
+                                       Cookbook recipe.json), each imported independently; per-file
+                                       results + summary. Max 200 files, 1 MB each
+        ImportedRecipeMapping.kt    ImportedRecipe -> RecipeRequest, shared by URL and file import
         IngredientMergeHandler.kt          POST /api/ingredients/{id}/merge-into/{targetId} — no
                                              ownership check, ingredients are global
       recipeimport/
@@ -298,6 +304,8 @@ larder/
                                      (as?) throughout, not the throwing .jsonObject/.jsonArray
                                      properties -- the JsonNull lesson from Phase 4b, applied
                                      proactively here rather than caught by a failing test
+        (JsonLdRecipeParser also has extractRecipeFromJson() for standalone recipe JSON; both
+         paths map recipeCategory into tags and description/tool into notes)
         ImportUrlValidator.kt       validateImportUrl() -- the SSRF guard SECURITY.md requires:
                                      rejects non-HTTP(S) schemes and any host resolving to a
                                      loopback/link-local (covers 169.254.169.254)/RFC 1918
@@ -331,7 +339,10 @@ larder/
                                                                        one Transaction; findById
                                                                        does not filter
                                                                        deleted_at, list() does
-        MealPlanEntryRow.kt / MealPlanRepository.kt  Phase 7 — owner_id-scoped; rows joined with
+        MealPlanEntryRow.kt / MealPlanRepository.kt  Phase 7, history added later — active plan
+                                                      (list/create/delete, deleted recipes hidden),
+                                                      startNew (archive + optional copy), history,
+                                                      find (archived plans keep deleted recipes); rows joined with
                                                       recipes for title + deleted flag, so
                                                       entries for soft-deleted recipes still
                                                       render; insertion order
@@ -418,29 +429,34 @@ larder/
         ConfirmDialog.js                 new — generic confirm/cancel modal; shelf had no
                                            equivalent since its dialogs were all task-specific
         DialogHost.js                    dispatches state.activeDialog to the right dialog
-        AddToMealPlanDialog.js           optional label + servings (or batch multiplier when the
-                                           recipe has no numeric yield), sent as entered
-        RecipeCard.js                     used by the recipe-list card grid
+        RecipeCard.js                     all-recipes card: body opens the recipe, "+ Plan" button
+        PlanEntryCard.js                  a meal-plan entry card (current plan: removable; past
+                                            plan: deleted recipes unlinked)
       views/
         Login.js / Register.js            adapted from shelf's near-identical originals
-        RecipeList.js                      card grid (explicit human choice over a table),
+        RecipeList.js                      two sections: current meal plan, then all recipes (card
+                                             grid, explicit human choice over a table),
                                              debounced tag filter, import/new actions
         RecipeDetail.js                    raw_text ingredient display, numbered instructions,
                                              edit/delete actions
         RecipeForm.js                      shared create/edit form: scalar fields + dynamic
                                              ingredient/instruction rows (display:contents
                                              wrapper, same pattern as RecipeList's card grid)
-        ShoppingLists.js                   Phase 9b — saved lists + "New from meal plan"
-        ShoppingList.js                    Phase 9b — one list: check off, sources, remove, add,
-                                             delete, "Select to merge" (first pick survives), drag
+        ShoppingList.js                    the Shopping tab (current plan's list): check off,
+                                             sources, remove, add, "Select to merge" (first pick survives), drag
                                              to reorder by grip (Pointer Events; arrow keys too)
-        MealPlan.js                        Phase 9b — the meal-plan list: title, label chip,
+        MealPlanHistory.js / PastMealPlan.js  past plans list; one past plan with "Use again"
+        (removed) MealPlan.js              Phase 9b — the meal-plan list: title, label chip,
                                              API-formatted servings, remove
   db/
     migrations/
       0001_initial_schema.sql   all v1 tables, indexes, and constraints (PROJECT_BRIEF.md §7)
       0002_seed_units.sql       21 starter units (volume/mass/count) with conversion factors
       0003_meal_plan_labels.sql  meal plan becomes a flat list: drops plan_date/meal_slot, adds label
+      0006_recipe_notes.sql       recipes.notes (free text; paragraphs separated by a blank line)
+      0005_shopping_list_per_plan.sql  shopping_lists.meal_plan_id (one list per plan)
+      0004_meal_plans.sql        meal_plans table (one active per owner via a partial unique index,
+                                   archived_at for history); entries get meal_plan_id
   ingredient-parser/            Phase 4a — standalone Python sidecar, see its own README.md
     app.py                       stdlib http.server, POST /parse + GET /health, model loaded
                                    once at import time, Fraction quantities (not floats)

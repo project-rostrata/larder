@@ -20,13 +20,14 @@ data class RecipeFields(
     val totalTimeMinutes: Int?,
     val tags: List<String>,
     val instructions: List<String>,
+    val notes: String?,
 )
 
 data class PersistedRecipe(val recipe: RecipeRow, val ingredients: List<RecipeIngredientRow>)
 
 private const val RECIPE_COLUMNS =
     "id, owner_id, title, source_url, servings, servings_text, prep_time_minutes, " +
-        "cook_time_minutes, total_time_minutes, tags, instructions, created_at, updated_at, deleted_at"
+        "cook_time_minutes, total_time_minutes, tags, instructions, notes, created_at, updated_at, deleted_at"
 private const val RECIPE_INGREDIENT_COLUMNS =
     "id, recipe_id, position, raw_text, notes, quantity_numerator, quantity_denominator, unit_id, ingredient_id"
 
@@ -38,8 +39,8 @@ class RecipeRepository(private val database: Database) {
             tx.update(
                 """
                 INSERT INTO recipes (id, owner_id, title, source_url, servings, servings_text,
-                    prep_time_minutes, cook_time_minutes, total_time_minutes, tags, instructions)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    prep_time_minutes, cook_time_minutes, total_time_minutes, tags, instructions, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.trimIndent(),
                 bind = { stmt -> bindRecipeFields(stmt, id, ownerId, fields, startIndex = 1) },
             )
@@ -72,12 +73,13 @@ class RecipeRepository(private val database: Database) {
             """
             UPDATE recipes SET title = ?, source_url = ?, servings = ?, servings_text = ?,
                 prep_time_minutes = ?, cook_time_minutes = ?, total_time_minutes = ?,
-                tags = ?, instructions = ?, updated_at = now()
+                tags = ?, instructions = ?, notes = ?, updated_at = now()
             WHERE id = ?
             """.trimIndent(),
             bind = { stmt -> bindRecipeFields(stmt, existing.id, ownerId, fields, startIndex = 1, includeId = true) },
         )
         tx.update("DELETE FROM recipe_ingredients WHERE recipe_id = ?", bind = { it.setObject(1, id) })
+        resetShoppingListsForRecipe(tx, id)
         val insertedIngredients = insertIngredients(tx, id, ingredientLines)
         val recipe = tx.queryOne(
             "SELECT $RECIPE_COLUMNS FROM recipes WHERE id = ?",
@@ -137,11 +139,14 @@ class RecipeRepository(private val database: Database) {
     // True only if this call is what deleted it — false for "doesn't exist", "not yours", and
     // "already deleted" alike, so the caller can turn all three into the same 404 rather than
     // leaking which one applies.
-    fun softDelete(id: UUID, ownerId: UUID): Boolean =
-        database.update(
+    fun softDelete(id: UUID, ownerId: UUID): Boolean = database.transaction { tx ->
+        val deleted = tx.update(
             "UPDATE recipes SET deleted_at = now() WHERE id = ? AND owner_id = ? AND deleted_at IS NULL",
             bind = { stmt -> stmt.setObject(1, id); stmt.setObject(2, ownerId) },
         ) > 0
+        if (deleted) resetShoppingListsForRecipe(tx, id)
+        deleted
+    }
 
     private fun insertIngredients(
         tx: Transaction,
@@ -202,6 +207,7 @@ class RecipeRepository(private val database: Database) {
         setNullableInt(stmt, i++, fields.totalTimeMinutes)
         stmt.setArray(i++, stmt.connection.createArrayOf("text", fields.tags.toTypedArray()))
         stmt.setArray(i++, stmt.connection.createArrayOf("text", fields.instructions.toTypedArray()))
+        stmt.setString(i++, fields.notes)
         if (includeId) stmt.setObject(i, id)
     }
 
@@ -222,6 +228,7 @@ class RecipeRepository(private val database: Database) {
         totalTimeMinutes = rs.getInt("total_time_minutes").takeUnless { rs.wasNull() },
         tags = (rs.getArray("tags")?.array as? Array<String>)?.toList() ?: emptyList(),
         instructions = (rs.getArray("instructions")?.array as? Array<String>)?.toList() ?: emptyList(),
+        notes = rs.getString("notes"),
         createdAt = rs.getTimestamp("created_at").toInstant(),
         updatedAt = rs.getTimestamp("updated_at").toInstant(),
         deletedAt = rs.getTimestamp("deleted_at")?.toInstant(),

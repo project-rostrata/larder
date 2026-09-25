@@ -24,6 +24,7 @@ data class RecipeRequest(
     val tags: List<String> = emptyList(),
     val instructions: List<String> = emptyList(),
     val ingredients: List<RecipeIngredientInput> = emptyList(),
+    val notes: String? = null,
 )
 
 @Serializable
@@ -39,4 +40,5 @@ fun RecipeRequest.toFields(): RecipeFields = RecipeFields(
     totalTimeMinutes = totalTimeMinutes,
     tags = tags,
     instructions = instructions,
+    notes = notes?.trim()?.takeIf { it.isNotEmpty() },
 )

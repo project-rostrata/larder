@@ -10,7 +10,7 @@ import java.math.BigDecimal
 
 data class ImportedRecipe(
     val title: String,
-    val sourceUrl: String,
+    val sourceUrl: String?,
     val servings: BigDecimal?,
     val servingsText: String?,
     val prepTimeMinutes: Int?,
@@ -19,6 +19,7 @@ data class ImportedRecipe(
     val tags: List<String>,
     val instructions: List<String>,
     val ingredientRawTexts: List<String>,
+    val notes: String?,
 )
 
 private val JSON_LD_SCRIPT = Regex(
@@ -49,6 +50,25 @@ fun extractRecipeFromHtml(html: String, sourceUrl: String): ImportedRecipe? {
     return null
 }
 
+// A recipe saved as a standalone JSON file -- e.g. Nextcloud Cookbook's per-recipe recipe.json,
+// which is a schema.org Recipe object. Its own "url" (where it was originally imported from)
+// becomes the source URL when it's an absolute http(s) URL. Returns null for text that isn't
+// JSON or holds no recognizable recipe.
+fun extractRecipeFromJson(text: String): ImportedRecipe? {
+    val root = try {
+        Json.parseToJsonElement(text)
+    } catch (e: Exception) {
+        return null
+    }
+    // Nextcloud always sets @type Recipe; tolerate a file that omits it but is clearly one.
+    val obj = findRecipeObject(root)
+        ?: (root as? JsonObject)?.takeIf { it["name"] is JsonPrimitive && it["recipeIngredient"] != null }
+        ?: return null
+    val url = (obj["url"] as? JsonPrimitive)?.contentOrNull?.trim()
+        ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    return mapRecipeObject(obj, url)
+}
+
 // Safe casts (as?) throughout, not the throwing .jsonObject/.jsonArray convenience properties
 // -- a schema.org object found in the wild is never as clean as the spec, and a field being
 // present-but-null (JsonNull, not Kotlin null) or an unexpected shape must degrade gracefully,
@@ -71,7 +91,7 @@ private fun isRecipeType(obj: JsonObject): Boolean = when (val type = obj["@type
     else -> false
 }
 
-private fun mapRecipeObject(obj: JsonObject, sourceUrl: String): ImportedRecipe {
+private fun mapRecipeObject(obj: JsonObject, sourceUrl: String?): ImportedRecipe {
     val (servings, servingsText) = extractYield(obj["recipeYield"])
     return ImportedRecipe(
         title = (obj["name"] as? JsonPrimitive)?.contentOrNull.orEmpty(),
@@ -81,11 +101,35 @@ private fun mapRecipeObject(obj: JsonObject, sourceUrl: String): ImportedRecipe 
         prepTimeMinutes = extractDurationMinutes(obj["prepTime"]),
         cookTimeMinutes = extractDurationMinutes(obj["cookTime"]),
         totalTimeMinutes = extractDurationMinutes(obj["totalTime"]),
-        tags = extractKeywords(obj["keywords"]),
+        tags = (extractKeywords(obj["recipeCategory"]) + extractKeywords(obj["keywords"])).distinctBy { it.lowercase() },
         instructions = extractInstructions(obj["recipeInstructions"]),
         ingredientRawTexts = extractStringList(obj["recipeIngredient"]),
+        notes = extractNotes(obj),
     )
 }
+
+// description, then "tool". schema.org means tools/equipment by "tool", and short entries like
+// that become one "Tools: ..." line; but Nextcloud Cookbook users commonly keep tips there
+// (full sentences), which are kept as their own paragraphs.
+private fun extractNotes(obj: JsonObject): String? {
+    val description = (obj["description"] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+    val tools = when (val t = obj["tool"]) {
+        is JsonArray -> t.mapNotNull { toolText(it) }
+        else -> listOfNotNull(t?.let { toolText(it) })
+    }
+    val toolParagraphs = when {
+        tools.isEmpty() -> emptyList()
+        tools.all { it.length <= 40 && !it.endsWith(".") } -> listOf("Tools: " + tools.joinToString(", "))
+        else -> tools
+    }
+    return (listOfNotNull(description) + toolParagraphs).joinToString("\n\n").takeIf { it.isNotEmpty() }
+}
+
+private fun toolText(element: JsonElement): String? = when (element) {
+    is JsonPrimitive -> element.contentOrNull
+    is JsonObject -> (element["name"] as? JsonPrimitive)?.contentOrNull ?: (element["text"] as? JsonPrimitive)?.contentOrNull
+    else -> null
+}?.trim()?.takeIf { it.isNotEmpty() }
 
 // recipeIngredient is confirmed (PROJECT_BRIEF.md section 4, via recipe-scrapers' own source)
 // to always be raw unparsed strings -- but real pages aren't always spec-compliant about

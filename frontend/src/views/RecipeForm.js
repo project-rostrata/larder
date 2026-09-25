@@ -70,6 +70,7 @@ function buildForm(initial, { submitLabel, onSubmit }) {
   const cookTimeMinutes = van.state(initial.cookTimeMinutes != null ? String(initial.cookTimeMinutes) : "");
   const totalTimeMinutes = van.state(initial.totalTimeMinutes != null ? String(initial.totalTimeMinutes) : "");
   const tags = van.state((initial.tags ?? []).join(", "));
+  const notes = van.state(initial.notes ?? "");
   const submitting = van.state(false);
 
   const instructionRows = van.state(
@@ -103,6 +104,7 @@ function buildForm(initial, { submitLabel, onSubmit }) {
       cookTimeMinutes: toInt(cookTimeMinutes.val),
       totalTimeMinutes: toInt(totalTimeMinutes.val),
       tags: tags.val.split(",").map((t) => t.trim()).filter((t) => t),
+      notes: notes.val,
       instructions: instructionRows.val.map((r) => r.value.trim()).filter((v) => v),
       ingredients: ingredientRows.val
         .map((r) => r.value.trim())
@@ -138,6 +140,17 @@ function buildForm(initial, { submitLabel, onSubmit }) {
     Field("Tags", { id: "tags", placeholder: "comma, separated", value: tags, oninput: (e) => { tags.val = e.target.value; } }),
     DynamicRows({ labelText: "Ingredients", rows: ingredientRows, addLabel: "Add ingredient", multiline: false }),
     DynamicRows({ labelText: "Instructions", rows: instructionRows, addLabel: "Add step", multiline: true }),
+    div(
+      {},
+      label({ class: "field-label", for: "notes" }, "Notes"),
+      textarea({
+        id: "notes",
+        class: "field-textarea notes-textarea",
+        placeholder: "Tips, substitutions… (a blank line starts a new paragraph)",
+        value: notes,
+        oninput: (e) => { notes.val = e.target.value; },
+      }),
+    ),
     div(
       { class: "form-actions" },
       button({ type: "button", class: "btn-ghost", onclick: () => window.history.back() }, "Cancel"),

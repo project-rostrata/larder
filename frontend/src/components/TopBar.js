@@ -40,8 +40,8 @@ export function TopBar() {
     nav(
       { class: "top-bar-nav" },
       NavLink("Recipes", "recipes", (v) => v.startsWith("recipe")),
-      NavLink("Meal plan", "meal-plan", (v) => v === "meal-plan"),
-      NavLink("Shopping", "shopping-lists", (v) => v.startsWith("shopping")),
+      NavLink("Meal plans", "meal-plans", (v) => v.startsWith("meal-plan")),
+      NavLink("Shopping", "shopping", (v) => v === "shopping"),
     ),
     div(
       { class: "top-bar-user" },

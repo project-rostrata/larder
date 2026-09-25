@@ -33,6 +33,8 @@ data class RecipeDisplay(
     val totalTime: String?,
     // Every present fact, labeled, in display order -- the recipe detail's meta line.
     val details: List<String>,
+    // The notes as paragraphs (split on blank lines), ready to render one <p> each.
+    val notes: List<String>,
 )
 
 fun RecipeRow.toDisplay(): RecipeDisplay {
@@ -44,5 +46,6 @@ fun RecipeRow.toDisplay(): RecipeDisplay {
         servings = servingsText,
         totalTime = total,
         details = listOfNotNull(servingsText, prep?.let { "prep $it" }, cook?.let { "cook $it" }, total?.let { "total $it" }),
+        notes = notes.orEmpty().split(Regex("\\n\\s*\\n")).map { it.trim() }.filter { it.isNotEmpty() },
     )
 }

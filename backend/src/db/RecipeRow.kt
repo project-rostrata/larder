@@ -16,6 +16,7 @@ data class RecipeRow(
     val totalTimeMinutes: Int?,
     val tags: List<String>,
     val instructions: List<String>,
+    val notes: String?,
     val createdAt: Instant,
     val updatedAt: Instant,
     val deletedAt: Instant?,

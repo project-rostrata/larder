@@ -2,6 +2,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import larder.recipeimport.extractRecipeFromHtml
+import larder.recipeimport.extractRecipeFromJson
 
 // FOOD_COM_FIXTURE is real JSON-LD, fetched live from a real food.com recipe page during this
 // phase's design (trimmed to a representative subset of ingredients/instructions) -- not
@@ -54,7 +55,8 @@ fun testRealFoodComFixtureExtractsCorrectly() {
     assertEquals(5, result.prepTimeMinutes)
     assertEquals(25, result.cookTimeMinutes)
     assertEquals(30, result.totalTimeMinutes)
-    assertEquals(listOf("Low Protein", "< 30 Mins", "Easy"), result.tags)
+    // recipeCategory ("Very Low Carbs") first, then keywords.
+    assertEquals(listOf("Very Low Carbs", "Low Protein", "< 30 Mins", "Easy"), result.tags)
     assertEquals(3, result.instructions.size)
     assertEquals("Dot with butter.", result.instructions[2])
     // Stray leading/trailing whitespace trimmed, real ingredient text preserved otherwise.
@@ -151,4 +153,46 @@ fun testMalformedJsonInsideScriptTagIsSkippedGracefully() {
 
     assertTrue(result != null)
     assertEquals("The Good One", result.title)
+}
+
+// Trimmed from a REAL Nextcloud Cookbook recipe.json the human exported from their own instance
+// (Lemon Blueberry Ricotta Pancakes): same shape and quirks -- numeric recipeYield, null times,
+// empty keywords, tips kept in "tool", unicode fraction characters, a relative image path --
+// with fewer ingredients/steps/tips.
+private val NEXTCLOUD_RECIPE_JSON = """
+{"id":"186465","name":"Lemon Blueberry Ricotta Pancakes","description":"","url":"https:\/\/www.jocooks.com\/wprm_print\/13753","image":"\/Recipes\/images\/lemon-blueberry-ricotta-pancakes.jpg","prepTime":null,"cookTime":null,"totalTime":null,"recipeCategory":"Breakfast","keywords":"","recipeYield":6,"tool":["You can use any berries you like for this recipe. Blackberries, raspberries, strawberries, etc, or any combination.","Don't overmix the batter. It's okay if it's a little lumpy."],"recipeIngredient":["2 cups all-purpose flour","½ teaspoon baking soda","⅛ teaspoon salt","1.5 - 2 cups milk. 1.5 is kinda cakey","maple syrup and butter for serving"],"recipeInstructions":["In a large bowl whisk together the flour, baking soda and a pinch of salt. Set aside.","Serve hot with maple syrup and butter."],"nutrition":{"@type":"NutritionInformation"},"@context":"http:\/\/schema.org","@type":"Recipe","dateModified":"2024-03-08T16:18:42+0000","dateCreated":"2023-07-25T00:52:53+0000"}
+"""
+
+fun testNextcloudRecipeJsonMapsAllFields() {
+    val r = extractRecipeFromJson(NEXTCLOUD_RECIPE_JSON)!!
+    assertEquals("Lemon Blueberry Ricotta Pancakes", r.title)
+    assertEquals("https://www.jocooks.com/wprm_print/13753", r.sourceUrl)
+    assertEquals(java.math.BigDecimal("6"), r.servings)
+    assertEquals(listOf("Breakfast"), r.tags)
+    assertEquals(null, r.prepTimeMinutes)
+    assertEquals(5, r.ingredientRawTexts.size)
+    assertEquals("½ teaspoon baking soda", r.ingredientRawTexts[1])
+    assertEquals(2, r.instructions.size)
+    // Empty description dropped; each full-sentence tip is its own paragraph.
+    val paragraphs = r.notes!!.split("\n\n")
+    assertEquals(2, paragraphs.size)
+    assertTrue(paragraphs[0].startsWith("You can use any berries"))
+}
+
+fun testShortToolsBecomeOneToolsLine() {
+    val json = """{"@type":"Recipe","name":"Soup","description":"Warming.","tool":["large pot","ladle"],"recipeIngredient":["1 onion"]}"""
+    assertEquals("Warming.\n\nTools: large pot, ladle", extractRecipeFromJson(json)!!.notes)
+}
+
+fun testRecipeJsonWithoutTypeStillRecognized() {
+    val json = """{"name":"Toast","recipeIngredient":["2 slices bread"],"url":"/relative/path"}"""
+    val r = extractRecipeFromJson(json)!!
+    assertEquals("Toast", r.title)
+    assertEquals(null, r.sourceUrl) // not an absolute http(s) URL
+}
+
+fun testNonRecipeJsonIsRejected() {
+    assertEquals(null, extractRecipeFromJson("not json at all"))
+    assertEquals(null, extractRecipeFromJson("""{"hello":"world"}"""))
+    assertEquals(null, extractRecipeFromJson("""[1, 2, 3]"""))
 }

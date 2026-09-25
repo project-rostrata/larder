@@ -4,10 +4,11 @@ import { navigate } from "../router.js";
 import { TopBar } from "../components/TopBar.js";
 import { DialogHost } from "../components/DialogHost.js";
 import { RecipeCard } from "../components/RecipeCard.js";
+import { PlanEntryCard } from "../components/PlanEntryCard.js";
 import { PlusIcon, LinkIcon } from "../icons.js";
-import { emptyNode } from "../vanHelpers.js";
+import { startNewPlan } from "../mealPlan.js";
 
-const { div, input, button } = van.tags;
+const { div, input, button, h2, section } = van.tags;
 
 function Toolbar() {
   let debounceTimer = null;
@@ -37,7 +38,7 @@ function Toolbar() {
       { class: "toolbar-actions" },
       button(
         { class: "btn-ghost", onclick: () => { state.activeDialog.val = { type: "import" }; } },
-        LinkIcon(), "Import from URL",
+        LinkIcon(), "Import",
       ),
       button(
         { class: "btn-primary", onclick: () => navigate("recipe-new") },
@@ -68,15 +69,53 @@ function Grid() {
   );
 }
 
-// router.js's navigate()/applyUrlToState() already triggers refreshRecipeList() on every
-// navigation to this view (including the initial load) -- this component only renders
-// state.recipes/state.recipesLoading, it doesn't own fetching them.
+// The active meal plan, as the first section of the recipes view.
+function CurrentPlan() {
+  return section(
+    { class: "recipes-section" },
+    div(
+      { class: "section-header" },
+      h2({ class: "recipe-section-title" }, "Current meal plan"),
+      div(
+        { class: "toolbar-actions" },
+        button({ class: "btn-ghost btn-compact", onclick: () => navigate("shopping") }, "Shopping list"),
+        button(
+          { class: "btn-ghost btn-compact", onclick: () => startNewPlan({ notice: "Started a new meal plan" }) },
+          "Start new plan",
+        ),
+      ),
+    ),
+    div(
+      { class: "recipe-grid plan-grid" },
+      () => {
+        if (state.mealPlanLoading.val && state.mealPlan.val.length === 0) {
+          return div({ class: "plan-empty" }, "Loading…");
+        }
+        if (state.mealPlan.val.length === 0) {
+          return div({ class: "plan-empty" }, "Nothing planned yet — tap “+ Plan” on a recipe below.");
+        }
+        return div({ style: "display:contents" }, ...state.mealPlan.val.map((e) => PlanEntryCard(e, { removable: true })));
+      },
+    ),
+  );
+}
+
+// router.js's navigate()/applyUrlToState() triggers refreshRecipeList() and refreshMealPlan()
+// on every navigation to this view -- this component only renders state, it doesn't fetch.
 export function RecipeList() {
   return div(
     { class: "app-shell" },
     TopBar(),
     Toolbar(),
-    Grid(),
+    div(
+      { class: "recipes-page" },
+      CurrentPlan(),
+      section(
+        { class: "recipes-section" },
+        div({ class: "section-header" }, h2({ class: "recipe-section-title" }, "All recipes")),
+        Grid(),
+      ),
+    ),
     DialogHost(),
   );
 }

@@ -331,21 +331,34 @@ views once Phases 7/8 land. No document-wide renumbering — later phases keep t
 
 ### Phase 9b — Meal planner + shopping list views (done)
 
-- **Meal planner (done):** a "Meal plan" view listing entries (recipe title, label, API-formatted
-  servings, remove button), an "Add to meal plan" dialog on the recipe page (optional label, plus
-  servings when the recipe has a numeric yield, otherwise a batch multiplier), and
-  Recipes / Meal plan links in the top bar.
-- **Shopping lists (done):** a "Shopping" nav section listing saved lists (API-formatted date
-  and progress) with a "New from meal plan" button, which is also on the meal-plan page as "Make
-  shopping list". A list page lets you tap an item to check it off (checked items sink to the
-  bottom), shows each item's sources line underneath, and supports remove, add-by-hand, delete
-  list (confirm dialog), and a "Select to merge" mode: pick two or more items, and the first one
-  picked keeps its name. A "Remember for future lists" checkbox (on by default) also folds the
-  other items' ingredients into the survivor's, so new lists combine them automatically.
-  Items are drag-and-drop reorderable by a grip handle (mouse and touch via Pointer Events,
-  arrow keys for keyboard); the API does the reordering (`POST .../items/{itemId}/move`). The merge interaction was undesigned in the brief (section 5); this is
-  the simplest workable version, easy to replace. There's no UI for generating from hand-picked
-  recipes (the API supports `recipeIds`) or for renaming items yet.
+- **Meal planner (done, then reworked for history):** the Recipes view has two sections, the
+  current meal plan (cards with label, servings, remove; "Make shopping list" and "Start new
+  plan") above a grid of all recipes, where each card has a "+ Plan" button opening the add
+  dialog. The "Meal plans" tab is the history of past plans, identified by date. A past plan
+  shows its entries, with deleted recipes marked "(deleted)" and not linked, and "Use again"
+  restores it as the current plan. Starting a new plan asks before replacing a non-empty
+  current one; the replaced plan is archived, not deleted (migration `0004`, `meal_plans`
+  table).
+- **Shopping (done, then simplified):** the Shopping tab is just the current meal plan's list,
+  and there are no saved or historical lists. The API builds it on first view and resets it
+  (deletes it, to be rebuilt) whenever the plan changes: a recipe added or removed, a recipe in
+  the plan edited or deleted, or a new plan started. Checks, hand-added items, order, and one-off
+  merges reset with it; remembered merges persist, since they live in the ingredient vocabulary.
+  Tap to check off, sources line per item, add by hand, remove, "Select to merge" (with
+  "Remember for future lists"), and drag to reorder. Adding to the plan is one tap ("+ Plan" on
+  a card, "Add to meal plan" on the recipe page), with no label or servings dialog.
+
+### Nextcloud Cookbook import (done, added after the phase plan)
+
+- The Import dialog takes one or more Nextcloud Cookbook `recipe.json` files (schema.org Recipe
+  JSON) alongside a web page URL. `POST /api/recipes/import-files` imports each file
+  independently through the same path as manual create, and returns per-file results plus a
+  ready-to-show summary. Every import creates new recipes (no de-duplication). Images are
+  ignored.
+- Recipes gained a Notes field (migration `0006`), shown on the recipe page and editable in the
+  form. An imported recipe's `description` and `tool` entries land there. Nextcloud users often
+  keep tips in `tool`: full sentences become paragraphs, and short tool names become one
+  "Tools:" line.
 
 ## Phase 10 — Docker (done)
 

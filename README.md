@@ -32,8 +32,8 @@ are built the way they are, not just what was built.
 - Accounts with username/password auth (PBKDF2, cookie-based sessions) — same pattern as `shelf`
 - Recipes stored as normalized Postgres rows (title, tags, structured ingredients,
   instructions), no images
-- Recipe import from a URL (schema.org JSON-LD)
-- Meal planning: a list of planned recipes with optional labels
+- Recipe import from a URL (schema.org JSON-LD) or from Nextcloud Cookbook `recipe.json` files
+- Meal planning: a current plan of recipes with optional labels, plus a history of past plans
 - Shopping list generation from a meal plan or a hand-picked set of recipes, combining shared
   ingredients into single line items, saved and editable (check off, add/remove by hand)
 - Responsive VanJS UI
@@ -83,9 +83,10 @@ Port 8080 by default; visit `http://localhost:8080/` for the UI. Routes so far:
 `GET /api/health`, `GET /api/version`, `POST /api/register`, `POST /api/login`,
 `POST /api/logout`, `GET /api/me`, `GET /api/recipes`,
 `GET/POST/PUT/DELETE /api/recipes/{id}` (POST for create is on the collection route, not
-`{id}`), `POST /api/recipes/import`, `POST /api/ingredients/{id}/merge-into/{targetId}`,
+`{id}`), `POST /api/recipes/import`, `POST /api/recipes/import-files` (Nextcloud Cookbook `recipe.json`), `POST /api/ingredients/{id}/merge-into/{targetId}`,
 `GET /api/meal-plan`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}`,
-`GET/POST /api/shopping-lists`, `GET/DELETE /api/shopping-lists/{id}`,
+`GET/POST /api/meal-plans`, `GET /api/meal-plans/{id}`,
+`GET /api/shopping-list` (the current plan's list),
 `POST /api/shopping-lists/{id}/items`, `PATCH/DELETE /api/shopping-lists/{id}/items/{itemId}`,
 `POST /api/shopping-lists/{id}/items/merge`, `POST /api/shopping-lists/{id}/items/{itemId}/move`. Any
 other `GET` outside `/api/` serves the frontend from `LARDER_FRONTEND_DIR` (defaults to

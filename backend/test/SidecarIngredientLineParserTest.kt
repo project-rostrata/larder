@@ -164,3 +164,15 @@ fun testRawTextIsAlwaysPreservedRegardlessOfParseQuality() {
     assertEquals("a completely unparseable line", result.rawText)
     assertNull(result.ingredientName)
 }
+
+// Real response for a line from the human's own Nextcloud Cookbook export: the upstream library
+// didn't recognize the spaced range and returned quantity as the string "1.5-2" (RANGE false).
+fun testSpacedRangeReturnedAsStringUsesHighEnd() {
+    val body = """
+        {"name": [{"text": "milk.", "confidence": 0.99405, "starting_index": 2}], "size": null, "amount": [{"quantity": "1.5-2", "quantity_max": "1.5-2", "unit": "cups", "text": "1.5-2 cups", "confidence": 0.999912, "starting_index": 0, "unit_system": "other", "APPROXIMATE": false, "SINGULAR": false, "RANGE": false, "MULTIPLIER": false, "PREPARED_INGREDIENT": false}], "preparation": null, "comment": {"text": "1.5 is kinda cakey", "confidence": 0.606893, "starting_index": 4}, "purpose": null, "foundation_foods": [], "sentence": "1.5 - 2 cups milk. 1.5 is kinda cakey"}
+    """.trimIndent()
+    val result = parseSidecarResponse(body, "1.5 - 2 cups milk. 1.5 is kinda cakey")
+    assertEquals(2, result.quantityNumerator)
+    assertEquals(1, result.quantityDenominator)
+    assertEquals("cups", result.unitWord)
+}

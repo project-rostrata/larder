@@ -31,6 +31,7 @@ data class RecipeResponse(
     val ingredients: List<RecipeIngredientResponse>,
     val createdAt: String,
     val updatedAt: String,
+    val display: RecipeDisplay,
 )
 
 // Separate from RecipeIngredientResponse specifically for ingredientWasNewlyCreated: a fact
@@ -89,6 +90,7 @@ fun RecipeRow.toResponse(ingredients: List<RecipeIngredientRow>): RecipeResponse
     },
     createdAt = createdAt.toString(),
     updatedAt = updatedAt.toString(),
+    display = toDisplay(),
 )
 
 // newlyCreatedFlags must be in the same order as persisted.ingredients — both ultimately trace

@@ -3,6 +3,7 @@ import { state, showError } from "../state.js";
 import { api, ApiError } from "../api.js";
 import { ImportDialog } from "./ImportDialog.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
+import { AddToMealPlanDialog } from "./AddToMealPlanDialog.js";
 import { refreshRecipeList } from "../recipes.js";
 import { navigate } from "../router.js";
 import { emptyNode } from "../vanHelpers.js";
@@ -28,6 +29,7 @@ export function DialogHost() {
       const dialog = state.activeDialog.val;
       if (!dialog) return emptyNode();
       if (dialog.type === "import") return ImportDialog();
+      if (dialog.type === "addToMealPlan") return AddToMealPlanDialog(dialog.recipe);
       if (dialog.type === "confirmDelete") {
         return ConfirmDialog({
           title: "Delete recipe?",

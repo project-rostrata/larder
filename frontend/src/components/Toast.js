@@ -9,13 +9,18 @@ export function Toast() {
   return div(
     { class: "toast-container" },
     () => {
-      const message = state.error.val;
+      const error = state.error.val;
+      const message = error ?? state.notice.val;
       if (!message) return emptyNode();
       return div(
-        { class: "toast", role: "alert" },
+        { class: error ? "toast" : "toast toast-notice", role: error ? "alert" : "status" },
         span({ class: "toast-message" }, message),
         button(
-          { class: "icon-btn", "aria-label": "Dismiss", onclick: () => { state.error.val = null; } },
+          {
+            class: "icon-btn",
+            "aria-label": "Dismiss",
+            onclick: () => { state.error.val = null; state.notice.val = null; },
+          },
           CloseIcon({ size: 14 }),
         ),
       );

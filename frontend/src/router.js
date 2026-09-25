@@ -9,6 +9,7 @@
 // reason about here.
 import { state } from "./state.js";
 import { refreshRecipeList, loadRecipe } from "./recipes.js";
+import { refreshMealPlan } from "./mealPlan.js";
 
 function paramsFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -19,11 +20,17 @@ function paramsFromUrl() {
   };
 }
 
-function loadForCurrentView() {
+// No-op until a user is known: on a logged-out page load, fetching would just 401 and surface
+// "Missing or invalid session" on the login page. app.js/Login/Register call this once the
+// user is set.
+export function loadForCurrentView() {
+  if (!state.user.val) return;
   if (state.view.val === "recipes") {
     refreshRecipeList();
   } else if (state.view.val === "recipe" || state.view.val === "recipe-edit") {
     if (state.currentRecipeId.val) loadRecipe(state.currentRecipeId.val);
+  } else if (state.view.val === "meal-plan") {
+    refreshMealPlan();
   }
 }
 

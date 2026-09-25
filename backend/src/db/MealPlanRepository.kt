@@ -6,15 +6,17 @@ import java.util.UUID
 
 private const val ENTRY_SELECT = """
     SELECT e.id, e.owner_id, e.recipe_id, e.label, e.servings_multiplier, e.created_at,
-           r.title AS recipe_title, (r.deleted_at IS NOT NULL) AS recipe_deleted
+           r.title AS recipe_title, r.servings AS recipe_servings, r.servings_text AS recipe_servings_text
     FROM meal_plan_entries e
     JOIN recipes r ON r.id = e.recipe_id
 """
 
 class MealPlanRepository(private val database: Database) {
+    // Entries whose recipe was soft-deleted stay in the table (that's what soft delete is for)
+    // but are filtered here, so no client ever sees a deleted recipe.
     fun list(ownerId: UUID): List<MealPlanEntryRow> =
         database.queryList(
-            "$ENTRY_SELECT WHERE e.owner_id = ? ORDER BY e.created_at",
+            "$ENTRY_SELECT WHERE e.owner_id = ? AND r.deleted_at IS NULL ORDER BY e.created_at",
             bind = { it.setObject(1, ownerId) },
             mapRow = ::toEntryRow,
         )
@@ -56,5 +58,6 @@ private fun toEntryRow(rs: ResultSet) = MealPlanEntryRow(
     servingsMultiplier = rs.getBigDecimal("servings_multiplier"),
     createdAt = rs.getTimestamp("created_at").toInstant(),
     recipeTitle = rs.getString("recipe_title"),
-    recipeDeleted = rs.getBoolean("recipe_deleted"),
+    recipeServings = rs.getBigDecimal("recipe_servings"),
+    recipeServingsText = rs.getString("recipe_servings_text"),
 )

@@ -87,12 +87,12 @@ class RecipeRepository(private val database: Database) {
         PersistedRecipe(recipe, insertedIngredients)
     }
 
-    // Owner-scoped but NOT deleted_at-filtered — a historical meal_plan_entries row still needs
-    // to resolve the recipe it references after that recipe's been soft-deleted. Listing
-    // (below) filters deleted_at; direct fetch by id does not. See PROJECT_BRIEF.md section 4.
+    // Soft-deleted recipes are filtered here, in the API layer, like everywhere else: to every
+    // client a deleted recipe simply doesn't exist. The row stays in the database so historical
+    // meal_plan_entries keep a valid recipe_id.
     fun findById(id: UUID, ownerId: UUID): RecipeRow? =
         database.queryOneOrNull(
-            "SELECT $RECIPE_COLUMNS FROM recipes WHERE id = ? AND owner_id = ?",
+            "SELECT $RECIPE_COLUMNS FROM recipes WHERE id = ? AND owner_id = ? AND deleted_at IS NULL",
             bind = { stmt -> stmt.setObject(1, id); stmt.setObject(2, ownerId) },
             mapRow = ::toRecipeRow,
         )

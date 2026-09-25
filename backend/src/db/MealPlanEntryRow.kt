@@ -4,8 +4,7 @@ import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
 
-// recipeTitle/recipeDeleted come from a join on recipes, so the meal plan can render every
-// entry -- including ones whose recipe was later soft-deleted -- without a fetch per entry.
+// recipe* fields come from a join on recipes, so the meal plan renders without a fetch per entry.
 data class MealPlanEntryRow(
     val id: UUID,
     val ownerId: UUID,
@@ -14,5 +13,6 @@ data class MealPlanEntryRow(
     val servingsMultiplier: BigDecimal,
     val createdAt: Instant,
     val recipeTitle: String,
-    val recipeDeleted: Boolean,
+    val recipeServings: BigDecimal?,
+    val recipeServingsText: String?,
 )

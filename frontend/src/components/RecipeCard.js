@@ -1,14 +1,10 @@
 import van from "../../lib/van-1.6.1.js";
-import { formatMinutes } from "../format.js";
 import { navigate } from "../router.js";
 
 const { div, span, button } = van.tags;
 
 export function RecipeCard(recipe) {
-  const meta = [];
-  if (recipe.servings) meta.push(`${recipe.servings} servings`);
-  const totalTime = formatMinutes(recipe.totalTimeMinutes);
-  if (totalTime) meta.push(totalTime);
+  const meta = [recipe.display.servings, recipe.display.totalTime].filter(Boolean);
 
   return button(
     { class: "recipe-card", onclick: () => navigate("recipe", { id: recipe.id }) },

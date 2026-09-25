@@ -8,7 +8,7 @@ export const state = {
 
   // Query-param view routing (?view=..., &id=...), matching shelf's own router.js pattern —
   // see src/router.js.
-  view: van.state("recipes"), // "recipes" | "recipe" | "recipe-new" | "recipe-edit"
+  view: van.state("recipes"), // "recipes" | "recipe" | "recipe-new" | "recipe-edit" | "meal-plan"
   currentRecipeId: van.state(null),
 
   recipes: van.state([]), // RecipeResponse[] for the current tag filter
@@ -18,16 +18,34 @@ export const state = {
   currentRecipe: van.state(null), // RecipeResponse | null — loaded for "recipe"/"recipe-edit"
   currentRecipeLoading: van.state(false),
 
+  mealPlan: van.state([]), // MealPlanEntryResponse[] — the whole list, insertion order
+  mealPlanLoading: van.state(false),
+
   error: van.state(null), // string | null — drives the Toast component
-  activeDialog: van.state(null), // null | {type:"import"} | {type:"confirmDelete", recipe}
+  notice: van.state(null), // string | null — non-error Toast (e.g. "Added to meal plan")
+  // null | {type:"import"} | {type:"confirmDelete", recipe} | {type:"addToMealPlan", recipe}
+  activeDialog: van.state(null),
 };
 
 let errorTimer = null;
 
 export function showError(message) {
+  state.notice.val = null;
   state.error.val = message;
   clearTimeout(errorTimer);
   errorTimer = setTimeout(() => {
     state.error.val = null;
   }, 6000);
+}
+
+let noticeTimer = null;
+
+// The newest message wins: a notice clears any older error, and showError clears any notice.
+export function showNotice(message) {
+  state.error.val = null;
+  state.notice.val = message;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => {
+    state.notice.val = null;
+  }, 3000);
 }

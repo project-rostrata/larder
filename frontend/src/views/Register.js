@@ -1,6 +1,7 @@
 import van from "../../lib/van-1.6.1.js";
 import { state, showError } from "../state.js";
 import { api, ApiError } from "../api.js";
+import { loadForCurrentView } from "../router.js";
 
 const { div, form, label, input, button, span, a } = van.tags;
 
@@ -14,6 +15,7 @@ export function Register({ onSwitchToLogin }) {
     submitting.val = true;
     try {
       state.user.val = await api.register(username.val, password.val);
+      loadForCurrentView();
     } catch (err) {
       showError(err instanceof ApiError ? err.message : "Could not register");
     } finally {

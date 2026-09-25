@@ -41,4 +41,8 @@ export const api = {
   updateRecipe: (id, body) => request("PUT", `/api/recipes/${id}`, body),
   deleteRecipe: (id) => request("DELETE", `/api/recipes/${id}`),
   importRecipe: (url) => request("POST", "/api/recipes/import", { url }),
+
+  listMealPlan: () => request("GET", "/api/meal-plan"),
+  addToMealPlan: (body) => request("POST", "/api/meal-plan", body),
+  removeFromMealPlan: (id) => request("DELETE", `/api/meal-plan/${id}`),
 };

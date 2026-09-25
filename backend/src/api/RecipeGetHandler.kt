@@ -6,9 +6,7 @@ import larder.db.RecipeRepository
 import java.util.UUID
 
 class RecipeGetHandler(private val recipes: RecipeRepository) {
-    // Direct fetch by id, unlike listing, does NOT filter deleted_at -- a historical
-    // meal_plan_entries row still needs to resolve the recipe it references after that recipe
-    // has been soft-deleted. See PROJECT_BRIEF.md section 4.
+    // A soft-deleted recipe is a 404, same as update/delete -- RecipeRepository.findById filters it.
     fun handle(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
         val id = ctx.pathParams["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
             ?: return Err(400, "INVALID_INPUT", "invalid recipe id")

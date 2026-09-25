@@ -3,23 +3,13 @@ import { state } from "../state.js";
 import { navigate } from "../router.js";
 import { TopBar } from "../components/TopBar.js";
 import { DialogHost } from "../components/DialogHost.js";
-import { formatMinutes } from "../format.js";
-import { EditIcon, TrashIcon, LinkIcon } from "../icons.js";
+import { EditIcon, TrashIcon, LinkIcon, PlusIcon } from "../icons.js";
 
 const { div, h1, h2, a, span, ul, li, ol, button } = van.tags;
 
 function MetaLine(recipe) {
-  const parts = [];
-  if (recipe.servings) parts.push(`${recipe.servings} servings`);
-  else if (recipe.servingsText) parts.push(recipe.servingsText);
-  const prep = formatMinutes(recipe.prepTimeMinutes);
-  if (prep) parts.push(`prep ${prep}`);
-  const cook = formatMinutes(recipe.cookTimeMinutes);
-  if (cook) parts.push(`cook ${cook}`);
-  const total = formatMinutes(recipe.totalTimeMinutes);
-  if (total) parts.push(`total ${total}`);
-  if (!parts.length) return null;
-  return div({ class: "recipe-detail-meta" }, parts.map((p) => span(p)));
+  if (!recipe.display.details.length) return null;
+  return div({ class: "recipe-detail-meta" }, recipe.display.details.map((d) => span(d)));
 }
 
 function Ingredients(recipe) {
@@ -61,14 +51,15 @@ function DetailContent(recipe) {
       div(
         { class: "recipe-detail-actions" },
         button(
+          { class: "btn-primary", onclick: () => { state.activeDialog.val = { type: "addToMealPlan", recipe }; } },
+          PlusIcon(), "Add to meal plan",
+        ),
+        button(
           { class: "btn-ghost", onclick: () => navigate("recipe-edit", { id: recipe.id }) },
           EditIcon(), "Edit",
         ),
         button(
-          {
-            class: "btn-danger",
-            onclick: () => { state.activeDialog.val = { type: "confirmDelete", recipe }; },
-          },
+          { class: "btn-danger", onclick: () => { state.activeDialog.val = { type: "confirmDelete", recipe }; } },
           TrashIcon(), "Delete",
         ),
       ),

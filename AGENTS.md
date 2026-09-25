@@ -83,6 +83,25 @@ Status codes are used consistently:
 well-formed URL that just doesn't have usable structured data, which is a different situation
 from a malformed request (400).
 
+## The API is the source of truth; the UI stays dumb
+
+The human's standing direction: filtering, formatting, and derived values belong in the API,
+not the frontend. The VanJS UI should render fields it's given and send back what the user
+typed.
+
+- **Filtering happens in queries.** For example, soft-deleted recipes are excluded by
+  `RecipeRepository`/`MealPlanRepository`, and the API never exposes a `deleted` flag for the
+  UI to filter on.
+- **Display strings come from the API.** Durations, servings text, and scaled amounts are
+  formatted server-side (`api/Display.kt`) and sent as ready-to-render fields (e.g. a recipe's
+  `display` object, a meal-plan entry's `servingsDisplay`). Raw values stay in responses only
+  where the UI needs them, e.g. to pre-fill edit forms.
+- **Derived values are computed by the API.** For example, the add-to-meal-plan request sends
+  the servings the user wants, and the API turns that into a multiplier.
+
+If you're about to write a formatter, filter, or calculation in `frontend/`, put it in the API
+response instead.
+
 ## Concurrency
 
 Handlers are plain blocking code, run on a bounded thread-pool `Executor` set via

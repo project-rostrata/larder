@@ -127,9 +127,29 @@ removed a first cut's `plan_date`/`meal_slot`). Verified live against a real Pos
 the HTTP API, including the upgrade path (a pre-`0003` database with an existing entry
 migrated cleanly, entry intact): label trimming/blank-to-null/length cap, insertion ordering,
 cross-user isolation, a not-owned and a nonexistent `recipe_id` both returning the identical
-403, and the soft-delete contract — soft-deleting a planned recipe leaves its entries intact
-(`recipeDeleted: true`, title still shown) while planning it again returns 422. No UI yet
-(Phase 9b).
+403, and the soft-delete contract (see below).
+
+**Phase 9b's meal-planner UI is done, and soft-delete filtering and display formatting moved into
+the API.** Following the human's direction that the API is the source of truth and the UI stays
+dumb (now in `AGENTS.md`):
+
+- **Soft-deleted recipes:** filtered in `RecipeRepository.findById` (so `GET /api/recipes/{id}`
+  404s on them, like update/delete) and in the meal-plan list query. Their entries stay in the
+  table but are never returned, and planning one gets the same 403 as an unknown id.
+- **Formatting:** `api/Display.kt` formats times and servings. Recipe responses carry a
+  `display` object (`servings`, `totalTime`, `details`), and meal-plan entries carry
+  `servingsDisplay` ("6 servings" scaled, or "×2" when the recipe has no numeric yield).
+- **Servings math:** `POST /api/meal-plan` accepts `servings` and converts it to the multiplier
+  itself. `frontend/src/format.js` was deleted.
+
+**Verified in a real browser for the first time**: headless Chrome (a Playwright-cached
+`chrome-headless-shell` binary already on the VM) driven over the DevTools protocol with Node's
+built-in WebSocket, no new dependencies. 16 checks across registering, API-formatted card and
+detail text, the add dialog in both modes, the success notice, the meal-plan list, remove,
+soft-delete filtering, typing in the recipe form (the earlier "not editable" bug, now confirmed in a
+real browser too), no horizontal overflow at 390px, and zero console errors. This run caught a
+Phase 9a bug: on a logged-out page load the router fetched `/api/recipes` before auth was known,
+showing "Missing or invalid session" on the login page. Loading now waits for a known user.
 
 ## System shape
 
@@ -213,11 +233,14 @@ larder/
                                             SSRF-guard rejection, bad request body), 422 for a
                                             URL we fetched but couldn't use (no Recipe JSON-LD,
                                             or its data fails normal recipe validation)
+        Display.kt                  display formatting (times, servings) — the API formats, the
+                                       UI renders; see AGENTS.md
         MealPlanDto.kt              Phase 7 — request/response DTOs
-        MealPlanHandlers.kt          Phase 7 — GET /api/meal-plan (whole list), POST /api/meal-plan
-                                       (optional label, trimmed, max 100 chars; (explicit recipe_id ownership
-                                       403 for unknown-or-not-yours recipe_id, 422 for a
-                                       soft-deleted own recipe), DELETE /api/meal-plan/{id}
+        MealPlanHandlers.kt          Phase 7 — GET /api/meal-plan (whole list, soft-deleted
+                                       recipes filtered out), POST /api/meal-plan (optional label,
+                                       trimmed, max 100 chars; `servings` or `servingsMultiplier`;
+                                       unknown, deleted, or not-yours recipe_id is one 403),
+                                       DELETE /api/meal-plan/{id}
         IngredientMergeHandler.kt          POST /api/ingredients/{id}/merge-into/{targetId} — no
                                              ownership check, ingredients are global
       recipeimport/
@@ -283,6 +306,7 @@ larder/
                                     synthetic (@graph, multi-typed @type, HowToSection) built
                                     from documented schema.org patterns, honestly distinguished
                                     from the real one rather than blurred together
+      DisplayTest.kt              3 cases — time, number, and servings formatting
       ImportUrlValidatorTest.kt   7 cases, all using IP-literal URLs (127.0.0.1, 10.x, a real
                                     public IP for the negative case) so the suite stays
                                     hermetic -- an IP literal resolves locally, no real DNS
@@ -312,26 +336,27 @@ larder/
     src/
       state.js                       top-level van.state() values, no store/reducer abstraction
       api.js                          fetch wrapper, one function per endpoint (Phase 1/3/5/6
-                                        API only — nothing for Phase 7/8 yet)
+                                        API; meal-plan calls added in Phase 9b)
       router.js                       query-param routing (?view=&id=&tag=), matching shelf's
                                         own router.js pattern exactly (explicit human choice);
                                         navigate()/applyUrlToState() own triggering data loads,
                                         views only render state
       recipes.js                      refreshRecipeList()/loadRecipe() — the data-loading
-                                        functions router.js calls into
-      format.js                       formatMinutes() only — no fraction formatter, ingredients
-                                        display as raw_text, not a reconstructed sentence
+                                        functions router.js calls into (only once a user is known)
+      mealPlan.js                     refreshMealPlan()/addToMealPlan()/removeMealPlanEntry()
       icons.js                        minimal inline-SVG icon set, same icon() helper as shelf
       vanHelpers.js                   emptyNode(), ported from shelf (verified against the
                                         vendored van.js source that it still safely no-ops)
       components/
         TopBar.js                       reused across every logged-in view (list/detail/form),
                                           unlike shelf's, which only ever appeared in one view
-        Toast.js                        direct port
+        Toast.js                        errors and (Phase 9b) success notices; newest wins
         ImportDialog.js                  adapted from shelf's MkdirDialog.js pattern
         ConfirmDialog.js                 new — generic confirm/cancel modal; shelf had no
                                            equivalent since its dialogs were all task-specific
         DialogHost.js                    dispatches state.activeDialog to the right dialog
+        AddToMealPlanDialog.js           optional label + servings (or batch multiplier when the
+                                           recipe has no numeric yield), sent as entered
         RecipeCard.js                     used by the recipe-list card grid
       views/
         Login.js / Register.js            adapted from shelf's near-identical originals
@@ -342,6 +367,8 @@ larder/
         RecipeForm.js                      shared create/edit form: scalar fields + dynamic
                                              ingredient/instruction rows (display:contents
                                              wrapper, same pattern as RecipeList's card grid)
+        MealPlan.js                        Phase 9b — the meal-plan list: title, label chip,
+                                             API-formatted servings, remove
   db/
     migrations/
       0001_initial_schema.sql   all v1 tables, indexes, and constraints (PROJECT_BRIEF.md §7)

@@ -322,10 +322,14 @@ views once Phases 7/8 land. No document-wide renumbering — later phases keep t
   known ingredient or got auto-created, and interactive servings-scaling. Both are a later,
   separate pass once there's a UX design to build against.
 
-### Phase 9b — Meal planner + shopping list views (placeholder, not started)
+### Phase 9b — Meal planner + shopping list views (meal planner done; shopping list not started)
 
-- Meal planner (a list of planned recipes with optional labels), shopping list view (checkable items, manual add,
-  a UI for Phase 8's manual item-merge endpoint). Depends on Phases 7 and 8 existing first.
+- **Meal planner (done):** a "Meal plan" view listing entries (recipe title, label, API-formatted
+  servings, remove button), an "Add to meal plan" dialog on the recipe page (optional label, plus
+  servings when the recipe has a numeric yield, otherwise a batch multiplier), and
+  Recipes / Meal plan links in the top bar.
+- **Shopping list view (not started):** checkable items, manual add, a UI for Phase 8's
+  manual item-merge endpoint. Depends on Phase 8.
 
 ## Phase 10 — Docker (done)
 

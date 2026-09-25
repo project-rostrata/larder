@@ -589,3 +589,27 @@ Phase 8 needs it to scale quantities).
   the fixed slots it replaces, labels aren't meant to line up into grid rows.
 - Phase 8's meal-plan source becomes `{ from_meal_plan: true }` (the whole list) instead of a
   date range.
+
+## API is the source of truth, UI stays dumb — deleted filtering and formatting move server-side
+
+The human's direction while the meal-plan UI was being built. First, specifically: "don't use
+the UI to filter on the deleted flag, the API layer should do that." Then generally: "the API
+should be the source of truth to keep the UI as 'dumb' as possible. Formatting, filtering, etc
+should nearly always be done at the API layer." Now a convention in `AGENTS.md`.
+
+Applied immediately:
+- **Soft-deleted recipes are filtered in the API.** `RecipeRepository.findById` excludes them, so
+  `GET /api/recipes/{id}` now 404s on a deleted recipe, reversing the Phase 5 decision that direct
+  fetch stays unfiltered. The meal-plan list query excludes entries whose recipe is deleted. The
+  entry rows remain in the table (soft delete still preserves them), but no client sees them.
+  Planning a deleted recipe now gets the same 403 as an unknown id instead of Phase 7's 422, since
+  to a client a deleted recipe doesn't exist. No `deleted`/`recipeDeleted` field is exposed.
+- **Formatting moved to `api/Display.kt`.** Recipe responses gain a `display` object and
+  meal-plan entries gain `servingsDisplay`. `frontend/src/format.js` is gone.
+- **Servings math moved to the API.** `POST /api/meal-plan` accepts `servings` (what the user
+  wants to make) or `servingsMultiplier`, not both. The API divides by the recipe's numeric
+  servings, and returns 400 if the recipe has none.
+
+Also fixed while verifying (a Phase 9a bug, not a design change): data loading now waits for a
+known user, so a logged-out page load no longer 401s and shows "Missing or invalid session" on
+the login page. A success notice now clears an older error; previously the stale error hid it.

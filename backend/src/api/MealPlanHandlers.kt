@@ -32,20 +32,32 @@ class MealPlanCreateHandler(
         if (label != null && label.length > MAX_LABEL_LENGTH) {
             return Err(400, "INVALID_INPUT", "label must be at most $MAX_LABEL_LENGTH characters")
         }
-        val multiplier = request.servingsMultiplier
-        if (!multiplier.isFinite() || multiplier <= 0.0 || multiplier > MAX_SERVINGS_MULTIPLIER) {
-            return Err(400, "INVALID_INPUT", "servingsMultiplier must be > 0 and <= $MAX_SERVINGS_MULTIPLIER")
+        if (request.servings != null && request.servingsMultiplier != null) {
+            return Err(400, "INVALID_INPUT", "send servings or servingsMultiplier, not both")
         }
         val recipeId = runCatching { UUID.fromString(request.recipeId) }.getOrNull()
             ?: return Err(400, "INVALID_INPUT", "invalid recipeId")
 
         // The explicit ownership check AGENTS.md requires for a client-supplied recipe_id. One
-        // owner-scoped lookup answers both "doesn't exist" and "not yours" with the same 403,
-        // so the response never reveals whether someone else's recipe id is real.
+        // owner-scoped, deleted-filtered lookup answers "doesn't exist", "deleted", and "not
+        // yours" with the same 403, so the response never reveals whether someone else's recipe
+        // id is real.
         val recipe = recipes.findById(recipeId, user.id)
             ?: return Err(403, "NOT_OWNED", "Recipe does not belong to the authenticated user")
-        if (recipe.deletedAt != null) {
-            return Err(422, "RECIPE_DELETED", "Cannot plan a deleted recipe")
+
+        val multiplier = when {
+            request.servings != null -> {
+                val base = recipe.servings
+                    ?: return Err(400, "INVALID_INPUT", "recipe has no numeric servings; send servingsMultiplier instead")
+                if (!request.servings.isFinite() || request.servings <= 0.0) {
+                    return Err(400, "INVALID_INPUT", "servings must be > 0")
+                }
+                request.servings / base.toDouble()
+            }
+            else -> request.servingsMultiplier ?: 1.0
+        }
+        if (!multiplier.isFinite() || multiplier <= 0.0 || multiplier > MAX_SERVINGS_MULTIPLIER) {
+            return Err(400, "INVALID_INPUT", "servingsMultiplier must be > 0 and <= $MAX_SERVINGS_MULTIPLIER")
         }
 
         val entry = mealPlan.create(user.id, recipeId, label, BigDecimal.valueOf(multiplier))

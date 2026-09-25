@@ -47,9 +47,8 @@ ingredient-parser sidecar (see [`ingredient-parser/README.md`](ingredient-parser
 recipe CRUD with ingredient-line parsing wired all the way through, recipe import from a URL
 (schema.org JSON-LD, verified against a real live recipe page), a VanJS frontend for
 auth/recipe browsing/creating/editing, and Docker packaging (one built image bundling the
-backend, frontend, and sidecar together, plus a `docker-compose.yml` with Postgres), and a meal-planning API
-(Phase 7). No shopping lists yet (Phase 8), and no UI for meal planning or shopping lists
-(Phase 9b) — see
+backend, frontend, and sidecar together, plus a `docker-compose.yml` with Postgres), and meal planning
+(Phase 7, with its UI from Phase 9b). No shopping lists yet (Phase 8) — see
 [`docs/architecture.md`](docs/architecture.md) for what's actually built right now.
 
 ## Quick start

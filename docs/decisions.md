@@ -653,3 +653,31 @@ Calls the brief left to this phase, made as follows:
 - **Default list name**: "Meal plan", or up to three recipe titles ("A, B, C + 2 more").
 - **Not built**: aisle grouping and a "pantry" skip list (both raised in the Cooklang comparison)
   aren't in the plan; they're candidates for later.
+
+## Shopping-list merges can be remembered; `mergeInto` now actually learns
+
+The human reported that merging "1 cup rice" with "2 cups white rice" on a list had to be redone
+on every new list, and expected larder to learn from the merge. That behavior matched the plan as
+written, since the brief treats a list merge as a per-list escape hatch, but the plan had a gap:
+its learning mechanism, ingredient `merge-into` (Phase 5), was never connected to list merges.
+
+There was also a real bug: `IngredientRepository.mergeInto` repointed existing rows and deleted
+the merged ingredient, but didn't keep its name. The next recipe line saying "white rice"
+auto-created the duplicate again, so even the standalone merge-into endpoint didn't learn.
+
+- **Fix**: `mergeInto` now inserts the merged-away ingredient's name and plural as aliases of the
+  target (`ON CONFLICT DO NOTHING`), so future lines resolve to the target.
+- **Opt-in, per merge** (the human's choice among "always", "opt-in", or "never from the list"):
+  the merge request takes `remember`, and the UI shows a "Remember for future lists" checkbox,
+  checked by default. Unchecked, a merge stays one-off, for merging genuinely different things
+  just to shorten one list without rewriting every recipe that uses them.
+- **Remembering** calls `mergeInto(other, survivor)` for each other item's ingredient. Items with
+  no ingredient (added by hand, or never parsed) can't be remembered. Items already sharing the
+  survivor's ingredient are the incompatible-unit case (cloves vs grams); there the notice says
+  so, because the fix there is a unit conversion, not an alias. The response's `notice` says what
+  happened, built by the API.
+- **Global effect**: ingredients are shared vocabulary, so a remembered merge applies to every
+  user's recipes on the instance. That fits a household deployment and matches what the existing
+  merge-into endpoint already allowed. Documented rather than gated.
+- **The survivor's name wins**: the first-picked item's ingredient is kept. Merging "white rice"
+  first would instead teach that "rice" means "white rice".

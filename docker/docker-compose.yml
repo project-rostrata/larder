@@ -44,6 +44,9 @@ services:
       # because local dev over plain HTTP needs it off.
       LARDER_SECURE_COOKIES: ${LARDER_SECURE_COOKIES:-false}
       LARDER_DB_POOL_SIZE: ${LARDER_DB_POOL_SIZE:-10}
+      # Used for display dates (e.g. a shopping list's "Sep 24, 2026"). Set to your zone, e.g.
+      # America/New_York, so dates don't roll over at UTC midnight.
+      TZ: ${TZ:-UTC}
       # Loopback -- the sidecar is bundled into this same container/image, not a separate
       # compose service, so it's never published as its own port here either.
       LARDER_INGREDIENT_PARSER_URL: http://127.0.0.1:8000

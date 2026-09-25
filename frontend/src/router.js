@@ -10,6 +10,7 @@
 import { state } from "./state.js";
 import { refreshRecipeList, loadRecipe } from "./recipes.js";
 import { refreshMealPlan } from "./mealPlan.js";
+import { refreshShoppingLists, loadShoppingList } from "./shoppingLists.js";
 
 function paramsFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -28,16 +29,20 @@ export function loadForCurrentView() {
   if (state.view.val === "recipes") {
     refreshRecipeList();
   } else if (state.view.val === "recipe" || state.view.val === "recipe-edit") {
-    if (state.currentRecipeId.val) loadRecipe(state.currentRecipeId.val);
+    if (state.currentId.val) loadRecipe(state.currentId.val);
   } else if (state.view.val === "meal-plan") {
     refreshMealPlan();
+  } else if (state.view.val === "shopping-lists") {
+    refreshShoppingLists();
+  } else if (state.view.val === "shopping-list") {
+    if (state.currentId.val) loadShoppingList(state.currentId.val);
   }
 }
 
 function applyUrlToState() {
   const { view, id, tag } = paramsFromUrl();
   state.view.val = view;
-  state.currentRecipeId.val = id;
+  state.currentId.val = id;
   state.tagFilter.val = tag;
   loadForCurrentView();
 }
@@ -55,7 +60,7 @@ export function navigate(view, { id, tag } = {}) {
   const query = params.toString();
   window.history.pushState({}, "", window.location.pathname + (query ? `?${query}` : ""));
   state.view.val = view;
-  state.currentRecipeId.val = id || null;
+  state.currentId.val = id || null;
   state.tagFilter.val = tag || "";
   loadForCurrentView();
 }

@@ -45,4 +45,14 @@ export const api = {
   listMealPlan: () => request("GET", "/api/meal-plan"),
   addToMealPlan: (body) => request("POST", "/api/meal-plan", body),
   removeFromMealPlan: (id) => request("DELETE", `/api/meal-plan/${id}`),
+
+  listShoppingLists: () => request("GET", "/api/shopping-lists"),
+  getShoppingList: (id) => request("GET", `/api/shopping-lists/${id}`),
+  createShoppingList: (body) => request("POST", "/api/shopping-lists", body),
+  deleteShoppingList: (id) => request("DELETE", `/api/shopping-lists/${id}`),
+  addShoppingItem: (id, text) => request("POST", `/api/shopping-lists/${id}/items`, { text }),
+  updateShoppingItem: (id, itemId, body) => request("PATCH", `/api/shopping-lists/${id}/items/${itemId}`, body),
+  deleteShoppingItem: (id, itemId) => request("DELETE", `/api/shopping-lists/${id}/items/${itemId}`),
+  mergeShoppingItems: (id, itemIds, remember) =>
+    request("POST", `/api/shopping-lists/${id}/items/merge`, { itemIds, remember }),
 };

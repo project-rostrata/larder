@@ -8,6 +8,8 @@ import { RecipeList } from "./src/views/RecipeList.js";
 import { RecipeDetail } from "./src/views/RecipeDetail.js";
 import { RecipeForm } from "./src/views/RecipeForm.js";
 import { MealPlan } from "./src/views/MealPlan.js";
+import { ShoppingLists } from "./src/views/ShoppingLists.js";
+import { ShoppingList } from "./src/views/ShoppingList.js";
 import { Toast } from "./src/components/Toast.js";
 
 const { div } = van.tags;
@@ -18,6 +20,8 @@ const authView = van.state("login");
 function MainApp() {
   if (state.view.val === "recipe") return RecipeDetail();
   if (state.view.val === "meal-plan") return MealPlan();
+  if (state.view.val === "shopping-lists") return ShoppingLists();
+  if (state.view.val === "shopping-list") return ShoppingList();
   if (state.view.val === "recipe-new" || state.view.val === "recipe-edit") return RecipeForm();
   return RecipeList();
 }

@@ -193,6 +193,43 @@ button:disabled { opacity: .6; cursor: default; }
 .meal-plan-entry-title:hover { text-decoration: underline; }
 .meal-plan-entry-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 12px var(--font-mono); color: var(--text-secondary); }
 
+/* ---- shopping lists ---- */
+
+.shop-list-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 6px; cursor: pointer; text-align: left; width: 100%;
+}
+.shop-list-card:hover { border-color: var(--border-strong); }
+.shop-add { display: flex; gap: 8px; margin-bottom: 16px; }
+.shop-add .field-input { flex-grow: 1; }
+.shop-hint {
+  font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; min-height: 44px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
+}
+.shop-remember { display: inline-flex; align-items: center; gap: 8px; color: var(--text-primary); cursor: pointer; }
+.shop-remember input { width: 18px; height: 18px; accent-color: var(--accent-fill); margin: 0; }
+.shop-item {
+  display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 8px 10px 14px; width: 100%; text-align: left; font: inherit; color: inherit;
+}
+.shop-item-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; cursor: pointer; }
+.shop-item-text { font-size: 15px; }
+.shop-item-sources { font: 12px var(--font-mono); color: var(--text-tertiary); }
+.shop-item.checked .shop-item-text { color: var(--text-tertiary); text-decoration: line-through; }
+.shop-check {
+  flex-shrink: 0; width: 24px; height: 24px; border-radius: 6px; border: 1.5px solid var(--border-strong);
+  background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+  color: #FFFFFF;
+}
+.shop-item.checked .shop-check { background: var(--accent-fill); border-color: var(--accent-fill); }
+.shop-item.selectable { cursor: pointer; }
+.shop-item.selected { border-color: var(--accent-fill); }
+.shop-pick {
+  flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border-strong);
+  display: flex; align-items: center; justify-content: center; font: 600 12px var(--font-mono);
+}
+.shop-item.selected .shop-pick { background: var(--accent-fill); border-color: var(--accent-fill); color: #FFFFFF; }
+
 /* ---- recipe form (create/edit) ---- */
 
 .recipe-form { flex-grow: 1; overflow: auto; padding: 24px; max-width: 640px; margin: 0 auto; width: 100%; }
@@ -266,9 +303,13 @@ button:disabled { opacity: .6; cursor: default; }
   .recipe-detail-actions { flex-wrap: wrap; }
   .top-bar-nav { margin-left: 12px; }
   .username { display: none; }
+  .top-bar-nav { gap: 0; }
+  .nav-link { padding: 0 8px; }
   .form-row { flex-direction: column; gap: 12px; }
 }
 
 @media (max-width: 420px) {
   .recipe-grid { grid-template-columns: 1fr; }
+  .avatar { display: none; }
+  .top-bar-nav { margin-left: 4px; }
 }

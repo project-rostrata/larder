@@ -96,7 +96,7 @@ fun main() {
     val shoppingListsListHandler = ShoppingListsListHandler(shoppingLists)
     val shoppingListGetHandler = ShoppingListGetHandler(shoppingLists)
     val shoppingListDeleteHandler = ShoppingListDeleteHandler(shoppingLists)
-    val shoppingListItemHandlers = ShoppingListItemHandlers(shoppingLists)
+    val shoppingListItemHandlers = ShoppingListItemHandlers(shoppingLists, ingredients)
     val staticFileHandler = StaticFileHandler(Path.of(frontendDir))
 
     val router = Router()

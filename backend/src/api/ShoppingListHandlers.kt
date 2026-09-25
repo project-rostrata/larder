@@ -2,9 +2,11 @@ package larder.api
 
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import larder.db.IngredientRepository
 import larder.db.MealPlanRepository
 import larder.db.RecipeRepository
 import larder.db.RecipeSelection
+import larder.db.ShoppingListItemRow
 import larder.db.ShoppingListRepository
 import larder.shopping.Combiner
 import larder.shopping.Rational
@@ -20,11 +22,18 @@ private fun uuidOrNull(raw: String?) = raw?.let { runCatching { UUID.fromString(
 // global vocabulary (e.g. a new unit_conversions row) take effect immediately.
 private fun combinerFor(lists: ShoppingListRepository) = Combiner(lists.units(), lists.conversions())
 
-private fun respondWithList(lists: ShoppingListRepository, listId: UUID, ownerId: UUID): ApiResult<String> {
+private fun respondWithList(
+    lists: ShoppingListRepository,
+    listId: UUID,
+    ownerId: UUID,
+    notice: String? = null,
+): ApiResult<String> {
     val detail = lists.find(listId, ownerId) ?: return Err(404, "NOT_FOUND", "Shopping list not found")
     val units = lists.units()
-    return Ok(Json.encodeToString(detail.toResponse(Combiner(units, lists.conversions()), units)))
+    return Ok(Json.encodeToString(detail.toResponse(Combiner(units, lists.conversions()), units).copy(notice = notice)))
 }
+
+private fun quoted(names: List<String>) = names.joinToString(", ") { "“$it”" }
 
 class ShoppingListCreateHandler(
     private val lists: ShoppingListRepository,
@@ -96,7 +105,10 @@ class ShoppingListDeleteHandler(private val lists: ShoppingListRepository) {
 
 // Item endpoints all return the whole updated list, so a client never has to re-derive
 // ordering, counts, or display text after a change.
-class ShoppingListItemHandlers(private val lists: ShoppingListRepository) {
+class ShoppingListItemHandlers(
+    private val lists: ShoppingListRepository,
+    private val ingredients: IngredientRepository,
+) {
     private fun ownedList(ctx: RouteContext, user: AuthenticatedUser): Pair<UUID?, Err?> {
         val id = uuidOrNull(ctx.pathParams["id"]) ?: return null to Err(400, "INVALID_INPUT", "invalid shopping list id")
         lists.find(id, user.id) ?: return null to Err(404, "NOT_FOUND", "Shopping list not found")
@@ -139,6 +151,9 @@ class ShoppingListItemHandlers(private val lists: ShoppingListRepository) {
 
     // The first id survives. Its quantity is recomputed from every merged source; if the units
     // can't all be combined it's left without a single total and displays each part instead.
+    // With remember=true, the other items' ingredients are also folded into the survivor's
+    // (IngredientRepository.mergeInto), so future lists combine them automatically. Ingredients
+    // are global, so this applies to every user's recipes.
     fun merge(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
         val id = uuidOrNull(ctx.pathParams["id"]) ?: return Err(400, "INVALID_INPUT", "invalid shopping list id")
         val detail = lists.find(id, user.id) ?: return Err(404, "NOT_FOUND", "Shopping list not found")
@@ -154,6 +169,26 @@ class ShoppingListItemHandlers(private val lists: ShoppingListRepository) {
         val parts = combinerFor(lists).amounts(allSources, survivor.ingredientId)
         val single = parts.singleOrNull()
         lists.merge(id, survivor, items.drop(1), single?.quantity, single?.unitId, items.all { it.checked })
-        return respondWithList(lists, id, user.id)
+        val notice = if (request.remember) remember(survivor, items.drop(1)) else null
+        return respondWithList(lists, id, user.id, notice)
+    }
+
+    // Returns the notice describing what was (or couldn't be) remembered.
+    private fun remember(survivor: ShoppingListItemRow, others: List<ShoppingListItemRow>): String {
+        val targetId = survivor.ingredientId
+            ?: return "Merged. “${survivor.name}” isn't a recognized ingredient, so there's nothing to remember."
+        val target = ingredients.findById(targetId)?.name ?: survivor.name
+        val unrecognized = others.filter { it.ingredientId == null }.map { it.name }
+        val learned = others.mapNotNull { it.ingredientId }.distinct().filter { it != targetId }
+            .mapNotNull { otherId -> ingredients.findById(otherId)?.also { ingredients.mergeInto(otherId, targetId) }?.name }
+        val sameIngredient = others.any { it.ingredientId == targetId }
+        val parts = buildList {
+            if (learned.isNotEmpty()) add("Future lists will combine ${quoted(learned)} into “$target”.")
+            if (unrecognized.isNotEmpty()) add("${quoted(unrecognized)} isn't a recognized ingredient, so it wasn't remembered.")
+            if (learned.isEmpty() && unrecognized.isEmpty() && sameIngredient) {
+                add("These are already the same ingredient (“$target”); they were listed separately because their units don't convert.")
+            }
+        }
+        return parts.joinToString(" ").ifEmpty { "Merged." }
     }
 }

@@ -2,6 +2,7 @@ import van from "../../lib/van-1.6.1.js";
 import { state } from "../state.js";
 import { navigate } from "../router.js";
 import { removeMealPlanEntry } from "../mealPlan.js";
+import { createFromMealPlan } from "../shoppingLists.js";
 import { TopBar } from "../components/TopBar.js";
 import { DialogHost } from "../components/DialogHost.js";
 import { CloseIcon, PlusIcon } from "../icons.js";
@@ -61,7 +62,11 @@ export function MealPlan() {
       div(
         { class: "recipe-detail-header" },
         h1({ class: "recipe-detail-title" }, "Meal plan"),
-        button({ class: "btn-ghost", onclick: () => navigate("recipes") }, PlusIcon(), "Add recipes"),
+        div(
+          { class: "recipe-detail-actions" },
+          button({ class: "btn-ghost", onclick: () => navigate("recipes") }, PlusIcon(), "Add recipes"),
+          button({ class: "btn-primary", onclick: createFromMealPlan }, "Make shopping list"),
+        ),
       ),
       List(),
     ),

@@ -8,8 +8,9 @@ export const state = {
 
   // Query-param view routing (?view=..., &id=...), matching shelf's own router.js pattern —
   // see src/router.js.
-  view: van.state("recipes"), // "recipes" | "recipe" | "recipe-new" | "recipe-edit" | "meal-plan"
-  currentRecipeId: van.state(null),
+  view: van.state("recipes"), // "recipes" | "recipe" | "recipe-new" | "recipe-edit" | "meal-plan" |
+  //   "shopping-lists" | "shopping-list"
+  currentId: van.state(null), // the ?id= of the current view (a recipe or a shopping list)
 
   recipes: van.state([]), // RecipeResponse[] for the current tag filter
   recipesLoading: van.state(false),
@@ -21,9 +22,15 @@ export const state = {
   mealPlan: van.state([]), // MealPlanEntryResponse[] — the whole list, insertion order
   mealPlanLoading: van.state(false),
 
+  shoppingLists: van.state([]), // ShoppingListSummaryResponse[], newest first
+  shoppingListsLoading: van.state(false),
+  currentShoppingList: van.state(null), // ShoppingListResponse | null
+  currentShoppingListLoading: van.state(false),
+
   error: van.state(null), // string | null — drives the Toast component
   notice: van.state(null), // string | null — non-error Toast (e.g. "Added to meal plan")
   // null | {type:"import"} | {type:"confirmDelete", recipe} | {type:"addToMealPlan", recipe}
+  //   | {type:"confirmDeleteList", list}
   activeDialog: van.state(null),
 };
 

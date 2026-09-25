@@ -65,6 +65,18 @@ class IngredientRepository(private val database: Database) {
                 "UPDATE ingredient_aliases SET ingredient_id = ? WHERE ingredient_id = ?",
                 bind = { it.setObject(1, targetId); it.setObject(2, id) },
             )
+            // Keep the merged-away name (and plural) as aliases of the target, so a future recipe
+            // line naming it resolves to the target instead of auto-creating the duplicate again.
+            // ON CONFLICT covers a name that's already an alias.
+            tx.update(
+                """
+                INSERT INTO ingredient_aliases (ingredient_id, alias)
+                SELECT ?, n FROM ingredients i, LATERAL (VALUES (i.name), (i.plural_name)) AS v(n)
+                WHERE i.id = ? AND n IS NOT NULL
+                ON CONFLICT DO NOTHING
+                """.trimIndent(),
+                bind = { it.setObject(1, targetId); it.setObject(2, id) },
+            )
             // Drop id's unit_conversions rows that would duplicate one targetId already has for
             // the same (from_unit_id, to_unit_id) pair, before reassigning the rest.
             tx.update(

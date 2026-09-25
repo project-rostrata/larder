@@ -168,7 +168,27 @@ against real Postgres and the real ingredient-parser sidecar:
 - **Snapshots:** the list was byte-for-byte unchanged after editing one source recipe and
   deleting another.
 
-No UI yet (rest of Phase 9b).
+
+**Phase 9b's shopping-list UI is done.** New views `ShoppingLists` (saved lists; "New from meal
+plan") and `ShoppingList` (tap to check off, sources line per item, remove, add by hand, delete
+list, "Select to merge" mode), plus a "Make shopping list" button on the meal plan and a
+"Shopping" nav link. The UI renders API strings only: the API gained `createdDisplay`/
+`progressDisplay` on lists and `sourcesDisplay` on items. Bare-count sources read "3 eggs"
+rather than "3". Dates use the server's zone, so `TZ` was added to `docker-compose.yml`.
+`state.currentRecipeId` was renamed `currentId`, since the router's `?id=` now also means a
+shopping list. Verified in headless Chrome over DevTools protocol (19 checks):
+- the empty meal plan's API error shown as a toast
+- generating from a meal plan planned through the real dialog
+- combined items and source lines
+- check-off ordering and progress
+- adding a manual item
+- merge mode (pick-order badges, disabled until two are picked, "garlic (4 1/2 cloves + 20 grams)")
+- remove
+- deleting the list through the confirm dialog
+- no overflow at 390px
+- zero console errors
+
+The earlier 16-check recipe/meal-plan run still passes after the nav change.
 
 ## System shape
 
@@ -256,8 +276,9 @@ larder/
                                        string ("4 1/8 cups flour", "garlic (2 cups + 3 cloves)")
         ShoppingListHandlers.kt     Phase 8 — create (recipeIds ownership-checked: one 403 for
                                        unknown/deleted/not-yours; empty meal plan 422), list, get,
-                                       delete, item add/PATCH/delete, merge; item endpoints return
-                                       the whole updated list
+                                       delete, item add/PATCH/delete, merge (remember=true also
+                                       folds ingredients via IngredientRepository.mergeInto and
+                                       returns a `notice`); item endpoints return the whole list
         Display.kt                  display formatting (times, servings) — the API formats, the
                                        UI renders; see AGENTS.md
         MealPlanDto.kt              Phase 7 — request/response DTOs
@@ -299,7 +320,9 @@ larder/
         IngredientRow.kt / IngredientRepository.kt  global, not owner_id-scoped; exact match on
                                                       name or ingredient_aliases; auto-creates
                                                       and reports whether this call created it;
-                                                      mergeInto() added Phase 5
+                                                      mergeInto() added Phase 5, and now keeps the
+                                                      merged-away name/plural as aliases of the
+                                                      target so it's learned for future lines
         UnitRow.kt / UnitRepository.kt         global; match on name/abbreviation/aliases; no
                                                  create — units are seeded, not user-grown
         RecipeRow.kt / RecipeIngredientRow.kt / RecipeRepository.kt  owner_id-scoped;
@@ -380,6 +403,8 @@ larder/
                                         views only render state
       recipes.js                      refreshRecipeList()/loadRecipe() — the data-loading
                                         functions router.js calls into (only once a user is known)
+      shoppingLists.js                refresh/load/create-from-meal-plan/delete; applyItemChange()
+                                        swaps in the whole list each item endpoint returns
       mealPlan.js                     refreshMealPlan()/addToMealPlan()/removeMealPlanEntry()
       icons.js                        minimal inline-SVG icon set, same icon() helper as shelf
       vanHelpers.js                   emptyNode(), ported from shelf (verified against the
@@ -404,6 +429,9 @@ larder/
         RecipeForm.js                      shared create/edit form: scalar fields + dynamic
                                              ingredient/instruction rows (display:contents
                                              wrapper, same pattern as RecipeList's card grid)
+        ShoppingLists.js                   Phase 9b — saved lists + "New from meal plan"
+        ShoppingList.js                    Phase 9b — one list: check off, sources, remove, add,
+                                             delete, "Select to merge" (first pick survives)
         MealPlan.js                        Phase 9b — the meal-plan list: title, label chip,
                                              API-formatted servings, remove
   db/
@@ -482,5 +510,6 @@ different process with its own env-var namespace.
 
 ## Not built yet
 
-The shopping-list UI (the rest of Phase 9b), then Phase 11's hardening pass. See `V1_PLAN.md`
+Phase 11's hardening pass. Deferred UI: generating a list from hand-picked recipes (the API
+supports `recipeIds`), renaming list items, and the brief's section 5 items. See `V1_PLAN.md`
 for the phase order.

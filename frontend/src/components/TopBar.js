@@ -39,8 +39,9 @@ export function TopBar() {
     ),
     nav(
       { class: "top-bar-nav" },
-      NavLink("Recipes", "recipes", (v) => v !== "meal-plan"),
+      NavLink("Recipes", "recipes", (v) => v.startsWith("recipe")),
       NavLink("Meal plan", "meal-plan", (v) => v === "meal-plan"),
+      NavLink("Shopping", "shopping-lists", (v) => v.startsWith("shopping")),
     ),
     div(
       { class: "top-bar-user" },

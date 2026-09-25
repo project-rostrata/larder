@@ -329,14 +329,21 @@ views once Phases 7/8 land. No document-wide renumbering — later phases keep t
   known ingredient or got auto-created, and interactive servings-scaling. Both are a later,
   separate pass once there's a UX design to build against.
 
-### Phase 9b — Meal planner + shopping list views (meal planner done; shopping list not started)
+### Phase 9b — Meal planner + shopping list views (done)
 
 - **Meal planner (done):** a "Meal plan" view listing entries (recipe title, label, API-formatted
   servings, remove button), an "Add to meal plan" dialog on the recipe page (optional label, plus
   servings when the recipe has a numeric yield, otherwise a batch multiplier), and
   Recipes / Meal plan links in the top bar.
-- **Shopping list view (not started):** checkable items, manual add, a UI for Phase 8's
-  manual item-merge endpoint. Depends on Phase 8.
+- **Shopping lists (done):** a "Shopping" nav section listing saved lists (API-formatted date
+  and progress) with a "New from meal plan" button, which is also on the meal-plan page as "Make
+  shopping list". A list page lets you tap an item to check it off (checked items sink to the
+  bottom), shows each item's sources line underneath, and supports remove, add-by-hand, delete
+  list (confirm dialog), and a "Select to merge" mode: pick two or more items, and the first one
+  picked keeps its name. A "Remember for future lists" checkbox (on by default) also folds the
+  other items' ingredients into the survivor's, so new lists combine them automatically. The merge interaction was undesigned in the brief (section 5); this is
+  the simplest workable version, easy to replace. There's no UI for generating from hand-picked
+  recipes (the API supports `recipeIds`) or for renaming items yet.
 
 ## Phase 10 — Docker (done)
 

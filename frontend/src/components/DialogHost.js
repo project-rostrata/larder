@@ -6,6 +6,7 @@ import { ConfirmDialog } from "./ConfirmDialog.js";
 import { AddToMealPlanDialog } from "./AddToMealPlanDialog.js";
 import { refreshRecipeList } from "../recipes.js";
 import { navigate } from "../router.js";
+import { deleteShoppingList } from "../shoppingLists.js";
 import { emptyNode } from "../vanHelpers.js";
 
 const { div } = van.tags;
@@ -36,6 +37,14 @@ export function DialogHost() {
           message: `"${dialog.recipe.title}" will be permanently removed from your recipe list.`,
           confirmLabel: "Delete",
           onConfirm: () => deleteRecipe(dialog.recipe),
+        });
+      }
+      if (dialog.type === "confirmDeleteList") {
+        return ConfirmDialog({
+          title: "Delete shopping list?",
+          message: `"${dialog.list.name}" will be permanently deleted.`,
+          confirmLabel: "Delete",
+          onConfirm: () => deleteShoppingList(dialog.list),
         });
       }
       return emptyNode();

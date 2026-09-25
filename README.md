@@ -41,14 +41,14 @@ are built the way they are, not just what was built.
 Not planned for v1, deliberately: images, recipe search, sharing, nutrition info — see
 [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) §5–6 for what's deferred and why.
 
-**Status: early build.** Phases 0–8, 9a, and 10 of [`V1_PLAN.md`](V1_PLAN.md) are done — a
+**Status: early build.** Phases 0–10 of [`V1_PLAN.md`](V1_PLAN.md) are done — a
 backend skeleton, the full database schema, auth (register/login/logout), a standalone Python
 ingredient-parser sidecar (see [`ingredient-parser/README.md`](ingredient-parser/README.md)),
 recipe CRUD with ingredient-line parsing wired all the way through, recipe import from a URL
 (schema.org JSON-LD, verified against a real live recipe page), a VanJS frontend for
 auth/recipe browsing/creating/editing, and Docker packaging (one built image bundling the
 backend, frontend, and sidecar together, plus a `docker-compose.yml` with Postgres), and meal planning
-(Phase 7, with its UI from Phase 9b), and shopping-list generation (Phase 8, API only so far) — see
+(Phase 7, with its UI from Phase 9b), and shopping-list generation (Phase 8, with its UI from Phase 9b) — see
 [`docs/architecture.md`](docs/architecture.md) for what's actually built right now.
 
 ## Quick start

@@ -1,5 +1,6 @@
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import larder.ingredients.normalizeIngredientName
 import larder.ingredients.parseSidecarResponse
 
 // Every JSON body below is a real response captured from the actual ingredient-parser/ sidecar
@@ -175,4 +176,13 @@ fun testSpacedRangeReturnedAsStringUsesHighEnd() {
     assertEquals(2, result.quantityNumerator)
     assertEquals(1, result.quantityDenominator)
     assertEquals("cups", result.unitWord)
+}
+
+fun testIngredientNameNormalization() {
+    assertEquals("milk", normalizeIngredientName("milk."))
+    assertEquals("milk", normalizeIngredientName("  milk,  "))
+    assertEquals("ricotta cheese", normalizeIngredientName("ricotta   cheese"))
+    assertEquals("half-and-half", normalizeIngredientName("\"half-and-half\""))
+    assertEquals("salt & pepper", normalizeIngredientName("(salt & pepper)"))
+    assertNull(normalizeIngredientName(" .. "))
 }

@@ -81,7 +81,7 @@ class ShoppingListItemHandlers(
         val request = try { Json.decodeFromString<ShoppingListItemCreateRequest>(ctx.readBody()) }
             catch (e: Exception) { return Err(400, "INVALID_BODY", "Malformed request body") }
         val (text, textErr) = validText(request.text); if (textErr != null) return textErr
-        lists.addManualItem(listId!!, text!!)
+        lists.addManualItem(listId!!, user.id, text!!) ?: return Err(404, "NOT_FOUND", "Shopping list not found")
         return respondWithList(lists, listId, user.id)
     }
 
@@ -92,7 +92,7 @@ class ShoppingListItemHandlers(
             catch (e: Exception) { return Err(400, "INVALID_BODY", "Malformed request body") }
         if (request.checked == null && request.text == null) return Err(400, "INVALID_INPUT", "send checked and/or text")
         val text = if (request.text != null) validText(request.text).let { (t, e) -> if (e != null) return e; t } else null
-        if (!lists.updateItem(listId!!, itemId, request.checked, text)) return Err(404, "NOT_FOUND", "Item not found")
+        if (!lists.updateItem(listId!!, user.id, itemId, request.checked, text)) return Err(404, "NOT_FOUND", "Item not found")
         return respondWithList(lists, listId, user.id)
     }
 
@@ -107,14 +107,14 @@ class ShoppingListItemHandlers(
         if (itemId !in itemIds) return Err(404, "NOT_FOUND", "Item not found")
         if (before == itemId) return Err(400, "INVALID_INPUT", "cannot move an item before itself")
         if (before != null && before !in itemIds) return Err(404, "NOT_FOUND", "Item not found: $before")
-        lists.moveItem(id, itemId, before)
+        if (!lists.moveItem(id, user.id, itemId, before)) return Err(404, "NOT_FOUND", "Shopping list not found")
         return respondWithList(lists, id, user.id)
     }
 
     fun delete(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
         val (listId, err) = ownedList(ctx, user); if (err != null) return err
         val itemId = uuidOrNull(ctx.pathParams["itemId"]) ?: return Err(400, "INVALID_INPUT", "invalid item id")
-        if (!lists.deleteItem(listId!!, itemId)) return Err(404, "NOT_FOUND", "Item not found")
+        if (!lists.deleteItem(listId!!, user.id, itemId)) return Err(404, "NOT_FOUND", "Item not found")
         return respondWithList(lists, listId, user.id)
     }
 
@@ -137,7 +137,9 @@ class ShoppingListItemHandlers(
         val allSources = detail.sources.filter { src -> items.any { it.id == src.itemId } }.map { it.toLine() }
         val parts = combinerFor(lists).amounts(allSources, survivor.ingredientId)
         val single = parts.singleOrNull()
-        lists.merge(id, survivor, items.drop(1), single?.quantity, single?.unitId, items.all { it.checked })
+        if (!lists.merge(id, user.id, survivor, items.drop(1), single?.quantity, single?.unitId, items.all { it.checked })) {
+            return Err(404, "NOT_FOUND", "Shopping list not found")
+        }
         val notice = if (request.remember) remember(survivor, items.drop(1)) else null
         return respondWithList(lists, id, user.id, notice)
     }

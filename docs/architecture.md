@@ -190,6 +190,20 @@ shopping list. Verified in headless Chrome over DevTools protocol (19 checks):
 
 The earlier 16-check recipe/meal-plan run still passes after the nav change.
 
+**Phase 11 (hardening) is done.**
+- **Ownership:** owner-scoping is enforced in the repository queries themselves.
+  `findIngredients(recipeId, ownerId)` scopes through `recipes`; every shopping-list item write
+  checks list ownership in its own transaction or `WHERE` clause.
+- **Dependencies:** the sidecar's transitive Python dependencies are pinned.
+- **Name normalization:** ingredient names drop stray punctuation before lookup.
+- **Verified on the real Docker deployment:**
+  - all six migrations applying fresh;
+  - an end-to-end API smoke test with a second user attacking every owner-scoped endpoint (all
+    404/403, the victim's data untouched);
+  - URL import from food.com, BBC Good Food, allrecipes, Budget Bytes, and Serious Eats (81/81
+    lines parsed, though several of those sites only intermittently answer this sandbox);
+  - three browser suites.
+
 ## System shape
 
 ```

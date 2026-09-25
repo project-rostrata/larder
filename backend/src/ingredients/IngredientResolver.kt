@@ -28,6 +28,7 @@ class IngredientResolver(
         val unitId = parsed.unitWord?.let { units.findByNameOrAlias(it) }?.id
 
         val (ingredientId, wasNew) = parsed.ingredientName
+            ?.let(::normalizeIngredientName)
             ?.let { ingredients.findOrCreate(it) }
             ?: (null to false)
 
@@ -42,3 +43,12 @@ class IngredientResolver(
         )
     }
 }
+
+// The parser occasionally carries sentence punctuation into a name -- found in real data:
+// "1.5 - 2 cups milk. 1.5 is kinda cakey" names the ingredient "milk.", which then never
+// matched "milk" on a shopping list. Leading/trailing punctuation and repeated whitespace are
+// stripped before lookup; null if nothing is left.
+fun normalizeIngredientName(name: String): String? =
+    name.replace(Regex("\\s+"), " ")
+        .trim { it.isWhitespace() || it in ".,;:!?*\"'()[]" }
+        .takeIf { it.isNotEmpty() }

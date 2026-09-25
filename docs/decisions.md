@@ -788,3 +788,41 @@ re-importing always creates new copies (no de-duplication).
 - **Browser-test note:** `DOM.setFileInputFiles` plus `File.text()` crashes this headless
   shell's renderer, so the import suite builds `File` objects in the page via `DataTransfer`
   instead. Same app code path.
+
+## Phase 11: hardening pass
+
+- **Ownership audit.** Every SQL statement in `db/` was listed and classified. Two gaps against
+  `AGENTS.md`'s rule that the *query itself* filters by owner (or joins through it) were fixed.
+  Neither was exploitable today, because the handlers checked first, but the point of the rule
+  is that a future caller can't forget:
+  - `RecipeRepository.findIngredients` took only a recipe id. It now takes `ownerId` and scopes
+    through `recipes`.
+  - The shopping-list item writes (`addManualItem`, `updateItem`, `moveItem`, `deleteItem`,
+    `merge`) filtered only by list id. Each now verifies the list's owner in its own
+    transaction or `WHERE` clause, and returns "not found" otherwise.
+
+  Everything else is scoped in the query, operates on an id that an owner-filtered query in
+  the same function just produced, or is the documented global-vocabulary exception
+  (`IngredientRepository`, `units`, `unit_conversions`). Verified with a second user attacking
+  every owner-scoped endpoint on the real Docker deployment: all 404/403, and the victim's
+  recipe and list were unchanged.
+- **SQL safety.** Only compile-time column/fragment constants are interpolated into SQL. The
+  other `$` interpolations in `db/` are log and error messages. The one raw `Statement` runs the
+  repo's own migration files.
+- **Dependencies.** Backend: exactly the three pre-approved jars. Frontend: only vendored
+  VanJS. Sidecar: the approved packages. **Fixed:** the sidecar's ten transitive Python packages
+  weren't pinned, so a later rebuild could drift. They're now pinned to the versions the verified
+  image resolved (click 8.5.0, cloudpickle 3.1.2, defusedxml 0.7.1, flexcache 0.3, flexparser
+  0.4, joblib 1.6.0, platformdirs 4.11.12, regex 2026.9.10, tqdm 4.70.1, typing-extensions
+  4.16.0). `pip --require-hashes` is still not set up.
+- **Smoke test on the Docker deployment.** It found one real combining bug: the parser named
+  "1.5 - 2 cups milk. 1.5 is kinda cakey" as **"milk."**, so it never matched "milk". Ingredient
+  names are now normalized (surrounding punctuation stripped, whitespace collapsed) before
+  lookup, and 300 ml + 2 cups of milk now combine to "3 1/4 cups". Ingredients already created
+  with punctuation (e.g. an existing "milk.") aren't rewritten; a remembered merge fixes one.
+- **Known limits, left as they are** (all real, all surfaced by real data):
+  - Singular/plural names ("onion" vs "onions") are separate ingredients.
+  - UK/US synonyms ("plain flour" vs "all-purpose flour") are separate; synonym matching is
+    deferred to v1.5 by the brief.
+  - Flour by weight vs by volume needs a `unit_conversions` row, and that table has no seed data.
+  - Remembered merges are the per-pair workaround for all of the above.

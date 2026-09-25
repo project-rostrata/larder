@@ -73,6 +73,10 @@ internal fun resetShoppingListsForRecipe(tx: Transaction, recipeId: UUID) {
 
 private const val UNIQUE_VIOLATION = "23505"
 
+// Appended to an item statement's WHERE: the item's list must belong to the bound owner id.
+private const val OWNED_LIST_CLAUSE =
+    "AND EXISTS (SELECT 1 FROM shopping_lists l WHERE l.id = shopping_list_id AND l.owner_id = ?)"
+
 class ShoppingListRepository(private val database: Database) {
 
     fun units(): Map<UUID, UnitInfo> =
@@ -200,8 +204,13 @@ class ShoppingListRepository(private val database: Database) {
         return ShoppingListDetail(summary, items, sources)
     }
 
-    // Manual items go to the end of the unchecked section.
-    fun addManualItem(listId: UUID, text: String): UUID = database.transaction { tx ->
+    // Every item write below verifies, inside its own transaction or WHERE clause, that the list
+    // belongs to ownerId -- the AGENTS.md ownership rule holds at the query, not only because
+    // today's handlers happen to check first. A list that isn't ownerId's reads as "not found".
+
+    // Manual items go to the end of the unchecked section. Null if the list isn't ownerId's.
+    fun addManualItem(listId: UUID, ownerId: UUID, text: String): UUID? = database.transaction { tx ->
+        if (!ownsList(tx, listId, ownerId)) return@transaction null
         val next = tx.queryOne(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM shopping_list_items WHERE shopping_list_id = ?",
             bind = { it.setObject(1, listId) },
@@ -210,24 +219,26 @@ class ShoppingListRepository(private val database: Database) {
         insertItem(tx, listId, null, text, null, null, next)
     }
 
-    fun updateItem(listId: UUID, itemId: UUID, checked: Boolean?, text: String?): Boolean =
+    fun updateItem(listId: UUID, ownerId: UUID, itemId: UUID, checked: Boolean?, text: String?): Boolean =
         database.update(
             """
             UPDATE shopping_list_items SET checked = COALESCE(?, checked), raw_text = COALESCE(?, raw_text)
-            WHERE id = ? AND shopping_list_id = ?
+            WHERE id = ? AND shopping_list_id = ? $OWNED_LIST_CLAUSE
             """.trimIndent(),
             bind = { stmt ->
                 if (checked == null) stmt.setNull(1, java.sql.Types.BOOLEAN) else stmt.setBoolean(1, checked)
                 stmt.setString(2, text)
                 stmt.setObject(3, itemId)
                 stmt.setObject(4, listId)
+                stmt.setObject(5, ownerId)
             },
         ) > 0
 
     // Moves itemId to just before beforeItemId (null = the end), then renumbers every item's
     // sort_order in the resulting display order. Checked items still list after unchecked ones
     // (find() orders by checked first), so a move reorders within that grouping.
-    fun moveItem(listId: UUID, itemId: UUID, beforeItemId: UUID?) = database.transaction { tx ->
+    fun moveItem(listId: UUID, ownerId: UUID, itemId: UUID, beforeItemId: UUID?): Boolean = database.transaction { tx ->
+        if (!ownsList(tx, listId, ownerId)) return@transaction false
         val ids = tx.queryList(
             "SELECT id FROM shopping_list_items WHERE shopping_list_id = ? ORDER BY checked, sort_order, id",
             bind = { it.setObject(1, listId) },
@@ -242,20 +253,22 @@ class ShoppingListRepository(private val database: Database) {
                 bind = { stmt -> stmt.setInt(1, index); stmt.setObject(2, id); stmt.setObject(3, listId) },
             )
         }
+        true
     }
 
-    fun deleteItem(listId: UUID, itemId: UUID): Boolean =
+    fun deleteItem(listId: UUID, ownerId: UUID, itemId: UUID): Boolean =
         database.update(
-            "DELETE FROM shopping_list_items WHERE id = ? AND shopping_list_id = ?",
-            bind = { stmt -> stmt.setObject(1, itemId); stmt.setObject(2, listId) },
+            "DELETE FROM shopping_list_items WHERE id = ? AND shopping_list_id = ? $OWNED_LIST_CLAUSE",
+            bind = { stmt -> stmt.setObject(1, itemId); stmt.setObject(2, listId); stmt.setObject(3, ownerId) },
         ) > 0
 
     // Folds `others` into `survivor`: their sources move over (a manual item, which has none,
     // becomes an "Added manually" source so its text isn't lost), the survivor takes the
     // recomputed quantity (null when the units couldn't all be combined), and the others are
     // deleted. The survivor stays checked only if every merged item was.
-    fun merge(listId: UUID, survivor: ShoppingListItemRow, others: List<ShoppingListItemRow>,
-              quantity: Rational?, unitId: UUID?, allChecked: Boolean) = database.transaction { tx ->
+    fun merge(listId: UUID, ownerId: UUID, survivor: ShoppingListItemRow, others: List<ShoppingListItemRow>,
+              quantity: Rational?, unitId: UUID?, allChecked: Boolean): Boolean = database.transaction { tx ->
+        if (!ownsList(tx, listId, ownerId)) return@transaction false
         val otherIds = others.map { it.id }.toTypedArray()
         for (other in others) {
             val hasSources = tx.queryOne(
@@ -268,8 +281,16 @@ class ShoppingListRepository(private val database: Database) {
             }
         }
         tx.update(
-            "UPDATE shopping_list_item_sources SET shopping_list_item_id = ? WHERE shopping_list_item_id = ANY(?)",
-            bind = { stmt -> stmt.setObject(1, survivor.id); stmt.setArray(2, stmt.connection.createArrayOf("uuid", otherIds)) },
+            """
+            UPDATE shopping_list_item_sources SET shopping_list_item_id = ?
+            WHERE shopping_list_item_id = ANY(?)
+              AND shopping_list_item_id IN (SELECT id FROM shopping_list_items WHERE shopping_list_id = ?)
+            """.trimIndent(),
+            bind = { stmt ->
+                stmt.setObject(1, survivor.id)
+                stmt.setArray(2, stmt.connection.createArrayOf("uuid", otherIds))
+                stmt.setObject(3, listId)
+            },
         )
         tx.update(
             """
@@ -290,7 +311,15 @@ class ShoppingListRepository(private val database: Database) {
             "DELETE FROM shopping_list_items WHERE id = ANY(?) AND shopping_list_id = ?",
             bind = { stmt -> stmt.setArray(1, stmt.connection.createArrayOf("uuid", otherIds)); stmt.setObject(2, listId) },
         )
+        true
     }
+
+    private fun ownsList(tx: Transaction, listId: UUID, ownerId: UUID): Boolean =
+        tx.queryOneOrNull(
+            "SELECT 1 AS ok FROM shopping_lists WHERE id = ? AND owner_id = ?",
+            bind = { stmt -> stmt.setObject(1, listId); stmt.setObject(2, ownerId) },
+            mapRow = { true },
+        ) ?: false
 
     private fun insertItem(tx: Transaction, listId: UUID, ingredientId: UUID?, name: String,
                            quantity: Rational?, unitId: UUID?, sortOrder: Int): UUID {

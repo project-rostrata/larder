@@ -111,10 +111,15 @@ class RecipeRepository(private val database: Database) {
             mapRow = { rs -> rs.getObject("id", UUID::class.java) to rs.getString("title") },
         ).toMap()
 
-    fun findIngredients(recipeId: UUID): List<RecipeIngredientRow> =
+    // Owner-scoped through recipes, like every recipe query (AGENTS.md ownership rule).
+    fun findIngredients(recipeId: UUID, ownerId: UUID): List<RecipeIngredientRow> =
         database.queryList(
-            "SELECT $RECIPE_INGREDIENT_COLUMNS FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position",
-            bind = { it.setObject(1, recipeId) },
+            """
+            SELECT $RECIPE_INGREDIENT_COLUMNS FROM recipe_ingredients
+            WHERE recipe_id = ? AND recipe_id IN (SELECT id FROM recipes WHERE owner_id = ?)
+            ORDER BY position
+            """.trimIndent(),
+            bind = { stmt -> stmt.setObject(1, recipeId); stmt.setObject(2, ownerId) },
             mapRow = ::toIngredientRow,
         )
 

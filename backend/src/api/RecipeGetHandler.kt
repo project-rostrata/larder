@@ -12,7 +12,7 @@ class RecipeGetHandler(private val recipes: RecipeRepository) {
             ?: return Err(400, "INVALID_INPUT", "invalid recipe id")
 
         val recipe = recipes.findById(id, user.id) ?: return Err(404, "NOT_FOUND", "Recipe not found")
-        val ingredients = recipes.findIngredients(recipe.id)
+        val ingredients = recipes.findIngredients(recipe.id, user.id)
 
         return Ok(Json.encodeToString(recipe.toResponse(ingredients)))
     }

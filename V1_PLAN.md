@@ -379,7 +379,19 @@ views once Phases 7/8 land. No document-wide renumbering — later phases keep t
   `PUID`/`PGID` entrypoint** — see brief section 8; there's no user-facing filesystem content to
   manage. No reverse-proxy service — not asked for.
 
-## Phase 11 — Hardening pass before calling v1 done
+## Phase 11 — Hardening pass before calling v1 done (done)
+
+As built (details in `docs/decisions.md`):
+- **Ownership:** every statement was classified; two gaps were closed at the query level.
+  `findIngredients` now takes the owner, and every shopping-list item write checks list
+  ownership itself.
+- **SQL safety:** only constants are interpolated into SQL.
+- **Dependencies:** match what was approved, plus the sidecar's transitive packages are now
+  pinned.
+- **Smoke test:** run on the real Docker deployment: API end to end, a cross-user attack on
+  every owner-scoped endpoint, five real recipe sites, and browser suites. It found and fixed
+  punctuation in ingredient names ("milk.") blocking combination.
+
 
 - Audit every query that touches `recipes`, `recipe_ingredients`, `meal_plan_entries`,
   `shopping_lists`, `shopping_list_items`, or `shopping_list_item_sources` for an `owner_id` (or

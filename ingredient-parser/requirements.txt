@@ -7,3 +7,17 @@ ingredient-parser-nlp==2.8.0
 nltk==3.10.3
 numpy==2.5.3
 pint==0.26.1
+
+# Transitive dependencies, pinned too (Phase 11 hardening) so a rebuild can't silently pick up
+# newer versions. These are the exact versions the verified image resolved (see the build log
+# in docs/decisions.md's Phase 11 entry).
+click==8.5.0
+cloudpickle==3.1.2
+defusedxml==0.7.1
+flexcache==0.3
+flexparser==0.4
+joblib==1.6.0
+platformdirs==4.11.12
+regex==2026.9.10
+tqdm==4.70.1
+typing-extensions==4.16.0

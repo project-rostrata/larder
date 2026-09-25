@@ -41,7 +41,7 @@ are built the way they are, not just what was built.
 Not planned for v1, deliberately: images, recipe search, sharing, nutrition info — see
 [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) §5–6 for what's deferred and why.
 
-**Status: early build.** Phases 0–10 of [`V1_PLAN.md`](V1_PLAN.md) are done — a
+**Status: early build.** Phases 0–11 of [`V1_PLAN.md`](V1_PLAN.md) are done — a
 backend skeleton, the full database schema, auth (register/login/logout), a standalone Python
 ingredient-parser sidecar (see [`ingredient-parser/README.md`](ingredient-parser/README.md)),
 recipe CRUD with ingredient-line parsing wired all the way through, recipe import from a URL

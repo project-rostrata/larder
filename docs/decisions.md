@@ -551,3 +551,22 @@ stayed the same across keystrokes and that its value accumulated correctly. Conf
 reproduction actually fails against the pre-fix code (the input got replaced on the very first
 keystroke and its value reset to `""`, exactly matching the reported symptom) and passes against
 the fix — not a test that happened to pass either way.
+
+## Phase 7: meal planning API
+
+- **`meal_slot` is a fixed set** (`breakfast`, `lunch`, `dinner`, `snack`), validated in the
+  handler rather than a DB `CHECK`/enum. The planned UI is a date x slot grid; free text would
+  scatter "Dinner"/"dinner"/"supper" into separate rows. Kept out of the schema so adding a slot
+  later is a code change, not a migration.
+- **A `recipe_id` that's unknown or not yours is a single 403**, via one owner-scoped
+  `findById`. This is the "referenced id" case the Phase 5 entry reserved 403 for; checking
+  existence separately to return 404 for nonexistent ids would let a caller probe whether
+  another user's recipe id is real.
+- **Planning a soft-deleted recipe is a 422**, not a 403/404 — the recipe is yours and exists,
+  it just can't be acted on. Existing entries for a recipe that gets soft-deleted afterward are
+  untouched and still returned (joined title + `recipeDeleted: true`) — the reason recipe
+  deletion is soft in the first place.
+- **List requires both `from` and `to`, capped at 366 days**, so the query is always bounded.
+- **No update endpoint** — the plan scoped Phase 7 to GET/POST/DELETE; moving an entry is
+  delete + create. Easy to add if the Phase 9b UI wants drag-to-move.
+- **Entry deletion is a hard delete** — nothing references a meal-plan entry.

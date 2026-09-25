@@ -1,6 +1,9 @@
 import com.sun.net.httpserver.HttpServer
 import larder.api.IngredientMergeHandler
 import larder.api.LoginHandler
+import larder.api.MealPlanCreateHandler
+import larder.api.MealPlanDeleteHandler
+import larder.api.MealPlanListHandler
 import larder.api.LogoutHandler
 import larder.api.MeHandler
 import larder.api.RecipeCreateHandler
@@ -19,6 +22,7 @@ import larder.auth.AuthConfig
 import larder.db.ConnectionPool
 import larder.db.Database
 import larder.db.IngredientRepository
+import larder.db.MealPlanRepository
 import larder.db.MigrationRunner
 import larder.db.RecipeRepository
 import larder.db.SessionRepository
@@ -61,6 +65,7 @@ fun main() {
     val sessions = SessionRepository(database)
     val recipes = RecipeRepository(database)
     val ingredients = IngredientRepository(database)
+    val mealPlan = MealPlanRepository(database)
     val units = UnitRepository(database)
     val ingredientParser = SidecarIngredientLineParser(ingredientParserUrl)
     val ingredientResolver = IngredientResolver(units, ingredients)
@@ -77,6 +82,9 @@ fun main() {
     val recipeDeleteHandler = RecipeDeleteHandler(recipes)
     val recipeImportHandler = RecipeImportHandler(recipes, ingredientParser, ingredientResolver)
     val ingredientMergeHandler = IngredientMergeHandler(ingredients)
+    val mealPlanListHandler = MealPlanListHandler(mealPlan)
+    val mealPlanCreateHandler = MealPlanCreateHandler(mealPlan, recipes)
+    val mealPlanDeleteHandler = MealPlanDeleteHandler(mealPlan)
     val staticFileHandler = StaticFileHandler(Path.of(frontendDir))
 
     val router = Router()
@@ -96,6 +104,9 @@ fun main() {
         "/api/ingredients/:id/merge-into/:targetId",
         requireAuth(sessions, users, ingredientMergeHandler::handle),
     )
+    router.get("/api/meal-plan", requireAuth(sessions, users, mealPlanListHandler::handle))
+    router.post("/api/meal-plan", requireAuth(sessions, users, mealPlanCreateHandler::handle))
+    router.delete("/api/meal-plan/:id", requireAuth(sessions, users, mealPlanDeleteHandler::handle))
     router.serveStatic(staticFileHandler::serve)
 
     val server = HttpServer.create(InetSocketAddress(port), 0)

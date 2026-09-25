@@ -120,6 +120,15 @@ unresolved ingredient rather than erroring (this is `entrypoint.sh`'s deliberate
 sidecar's, see `docs/decisions.md`); confirmed a clean `docker stop` exits promptly (code 143,
 the normal SIGTERM result) with no forced kill needed.
 
+**Phase 7 (meal planning API) is done** — `GET/POST /api/meal-plan`, `DELETE
+/api/meal-plan/{id}`. Verified live against a real Postgres through the HTTP API: slot ordering
+within a day (breakfast/lunch/dinner, not alphabetical), inclusive date-range filtering,
+cross-user isolation (a second user sees none of the first's entries and gets 404 deleting
+one), a not-owned and a nonexistent `recipe_id` both returning the identical 403, every
+validation 400, 401 without a session, and the soft-delete contract this schema was designed
+around: soft-deleting a planned recipe leaves its entries intact (`recipeDeleted: true`, title
+still shown) while planning it again returns 422. No UI yet (Phase 9b).
+
 ## System shape
 
 ```
@@ -202,6 +211,11 @@ larder/
                                             SSRF-guard rejection, bad request body), 422 for a
                                             URL we fetched but couldn't use (no Recipe JSON-LD,
                                             or its data fails normal recipe validation)
+        MealPlanDto.kt              Phase 7 — request/response DTOs + MEAL_SLOTS (fixed set)
+        MealPlanHandlers.kt          Phase 7 — GET /api/meal-plan?from=&to= (inclusive, max 366
+                                       days), POST /api/meal-plan (explicit recipe_id ownership
+                                       check: 403 for unknown-or-not-yours, 422 for a
+                                       soft-deleted own recipe), DELETE /api/meal-plan/{id}
         IngredientMergeHandler.kt          POST /api/ingredients/{id}/merge-into/{targetId} — no
                                              ownership check, ingredients are global
       recipeimport/
@@ -243,6 +257,10 @@ larder/
                                                                        one Transaction; findById
                                                                        does not filter
                                                                        deleted_at, list() does
+        MealPlanEntryRow.kt / MealPlanRepository.kt  Phase 7 — owner_id-scoped; rows joined with
+                                                      recipes for title + deleted flag, so
+                                                      entries for soft-deleted recipes still
+                                                      render; ordered by date, then slot order
       ingredients/
         IngredientLineParser.kt   the interface + ParsedIngredientLine (raw split, not yet
                                     resolved against larder's own tables)
@@ -397,5 +415,5 @@ different process with its own env-var namespace.
 
 ## Not built yet
 
-Phase 7 (meal planning), Phase 8 (shopping-list generation), and Phase 9b (their frontend
+Phase 8 (shopping-list generation), and Phase 9b (their frontend
 views). See `V1_PLAN.md` for the phase order.

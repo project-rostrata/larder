@@ -243,7 +243,7 @@ data, not a cache of something else.
   and stays not-pre-approved. Revisit only if a real site is actually hit that this can't
   handle, not preemptively.
 
-## Phase 7 — Meal planning
+## Phase 7 — Meal planning (done)
 
 - `GET /api/meal-plan?from=...&to=...`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}` —
   CRUD for `meal_plan_entries` (date, meal slot, recipe id, servings multiplier). `POST` must
@@ -254,6 +254,11 @@ data, not a cache of something else.
   decision (brief section 4's "Recipe scaling"), not an open question to re-flag. Multiplying a
   recipe's `servings` (the numeric field) by this factor, never `servings_text` (display-only),
   is what determines each entry's actual scaled ingredient quantities.
+- As built: `meal_slot` is a fixed set (`breakfast`/`lunch`/`dinner`/`snack`), validated in the
+  handler; list requires `from`/`to` (inclusive, max 366 days) and returns entries joined with
+  `recipeTitle`/`recipeDeleted`; an unknown-or-not-yours `recipe_id` is one 403 (no existence
+  leak), a soft-deleted own recipe is 422. No update endpoint — moving an entry is delete +
+  create, per this phase's original scope.
 
 ## Phase 8 — Shopping list generation
 

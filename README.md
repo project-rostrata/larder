@@ -41,14 +41,15 @@ are built the way they are, not just what was built.
 Not planned for v1, deliberately: images, recipe search, sharing, nutrition info — see
 [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) §5–6 for what's deferred and why.
 
-**Status: early build.** Phases 0–6, 9a, and 10 of [`V1_PLAN.md`](V1_PLAN.md) are done — a
+**Status: early build.** Phases 0–7, 9a, and 10 of [`V1_PLAN.md`](V1_PLAN.md) are done — a
 backend skeleton, the full database schema, auth (register/login/logout), a standalone Python
 ingredient-parser sidecar (see [`ingredient-parser/README.md`](ingredient-parser/README.md)),
 recipe CRUD with ingredient-line parsing wired all the way through, recipe import from a URL
 (schema.org JSON-LD, verified against a real live recipe page), a VanJS frontend for
 auth/recipe browsing/creating/editing, and Docker packaging (one built image bundling the
-backend, frontend, and sidecar together, plus a `docker-compose.yml` with Postgres). No meal
-planning or shopping lists yet, and no frontend for them either (Phase 9b) — see
+backend, frontend, and sidecar together, plus a `docker-compose.yml` with Postgres), and a meal-planning API
+(Phase 7). No shopping lists yet (Phase 8), and no UI for meal planning or shopping lists
+(Phase 9b) — see
 [`docs/architecture.md`](docs/architecture.md) for what's actually built right now.
 
 ## Quick start
@@ -83,7 +84,8 @@ Port 8080 by default; visit `http://localhost:8080/` for the UI. Routes so far:
 `GET /api/health`, `GET /api/version`, `POST /api/register`, `POST /api/login`,
 `POST /api/logout`, `GET /api/me`, `GET /api/recipes`,
 `GET/POST/PUT/DELETE /api/recipes/{id}` (POST for create is on the collection route, not
-`{id}`), `POST /api/recipes/import`, `POST /api/ingredients/{id}/merge-into/{targetId}`. Any
+`{id}`), `POST /api/recipes/import`, `POST /api/ingredients/{id}/merge-into/{targetId}`,
+`GET /api/meal-plan?from=&to=`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}`. Any
 other `GET` outside `/api/` serves the frontend from `LARDER_FRONTEND_DIR` (defaults to
 `../frontend` via `run.sh`).
 

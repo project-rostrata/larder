@@ -505,10 +505,22 @@ larder/
                                     degrading gracefully) — deliberately diverges from shelf's
                                     standalone-entrypoint.sh precedent on this one point, see
                                     docs/decisions.md
-    docker-compose.yml             app service (builds the Dockerfile above) + postgres service
-                                     (official image, named volume); no PUID/PGID handling, no
-                                     bind-mounted storage volume — no user-facing filesystem
-                                     content exists to manage
+                                 stage 3, `standalone`: FROM runtime + Postgres 18 (PGDG apt
+                                   repo, checksum-pinned key) + an unprivileged `larder` user,
+                                   for one `docker run` on a server; the last stage, so compose
+                                   pins `target: runtime`
+    standalone-entrypoint.sh      standalone stage's entrypoint: initdb on first run under
+                                    /data/postgres, Postgres on 127.0.0.1 (TCP needs the
+                                    password), sidecar + app as `larder`; container exits if
+                                    Postgres or the app does, not the sidecar
+    docker-compose.yml             app service (builds the Dockerfile's `runtime` target) +
+                                     postgres service (official image, named volume); no
+                                     PUID/PGID handling, no bind-mounted storage volume — no
+                                     user-facing filesystem content exists to manage
+  .github/workflows/
+    docker-build.yml             backend tests + sidecar pytest, then builds the standalone
+                                   image and pushes it to GHCR (:latest on main, :sha-*, :v*
+                                   on tags); hand-rolled docker commands, same as shelf
 ```
 
 ## Dependencies in use
@@ -545,7 +557,8 @@ Read from environment variables at startup (`Main.kt`), no config file:
 | `LARDER_FRONTEND_DIR` | yes | — (`run.sh` defaults it to `../frontend` for local dev) |
 
 `ingredient-parser/` has its own separate, small config surface — see its own README.md
-(currently just `INGREDIENT_PARSER_PORT`, default `8000`). Not part of the table above; it's a
+(`INGREDIENT_PARSER_PORT`, default `8000`, and `INGREDIENT_PARSER_HOST`, default `0.0.0.0`;
+the bundled images set `127.0.0.1`). Not part of the table above; it's a
 different process with its own env-var namespace.
 
 ## Not built yet

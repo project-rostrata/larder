@@ -29,6 +29,10 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      # Pinned explicitly: the Dockerfile's last stage is `standalone` (bundled Postgres, for a
+      # single `docker run` -- see docs/deployment.md), and without a target `docker build` builds
+      # the last stage, not this one. Same pin, for the same reason, as shelf's compose file.
+      target: runtime
     depends_on:
       postgres:
         condition: service_healthy

@@ -929,3 +929,57 @@ Design:
 - **Amount wrapping fix found in the screenshots:** the amount column could break inside one
   amount ("2 / tablespoons"). The API now also sends `amountParts`, and the UI keeps each part
   on one line, breaking only between the parts of a merged amount ("3 cloves + / 20 grams").
+
+## A standalone one-image deployment, published to GHCR by CI
+
+At the human's request, the same approach as shelf's: a single image to run larder on a server.
+The Dockerfile gained a third stage, `standalone`, that bundles Postgres with the app and
+sidecar, and `.github/workflows/docker-build.yml` builds it and pushes it to GHCR after the tests
+pass. `docs/deployment.md` is the how-to. Where it follows shelf and where it differs:
+
+- **Built `FROM runtime`**, not as a copy of it (shelf's standalone stage repeats its runtime
+  stage's steps). The app and sidecar in the standalone image are exactly the compose
+  deployment's, plus Postgres and a different entrypoint.
+- **Postgres 18 from PGDG.** The runtime base is Debian (python:3.12-slim, for the sidecar's
+  numpy wheels), and Debian trixie only ships Postgres 17, while compose pins 18.6. The image uses
+  the PostgreSQL project's own apt repo, with its signing key checksum-pinned like the kotlinc
+  download. Only the major version is pinned, since PGDG only carries the latest minor. It
+  resolved to 18.6 when built.
+- **Three processes, and a combined exit rule:** the container exits if Postgres or the app
+  exits (shelf's rule), but not if only the sidecar does (larder's Phase 10 rule, since the app
+  falls back to raw-text ingredients). This uses bash's `wait -n` with specific PIDs.
+- **The password actually matters.** shelf's `initdb --auth=trust` let any loopback connection
+  in. Here, the Unix socket (used only by the entrypoint's setup) trusts the `postgres` OS user,
+  and TCP, which the app uses, requires `LARDER_DB_PASSWORD` (scram-sha-256).
+- **Unprivileged app user, no PUID/PGID.** The app and sidecar run as a system `larder` user
+  (the runtime/compose stage still runs as root, unchanged). There's no PUID/PGID handling,
+  unlike shelf, since larder writes no user files; the only thing in `/data` is Postgres's
+  directory, owned by the container's `postgres` user.
+- **The sidecar now binds 127.0.0.1 inside both larder images** (new `INGREDIENT_PARSER_HOST`,
+  still `0.0.0.0` by default for the sidecar's own standalone image). It was never published,
+  but it was reachable from other containers on the same Docker network.
+- **Compose pins `target: runtime`.** Without it, adding a later stage would silently change what
+  `docker compose up --build` builds; shelf hit exactly this regression.
+- **CI also runs the sidecar's pytest suite,** which shelf doesn't have. It triggers on `main`,
+  like shelf's; larder's branch was renamed from `master`, which the human considers
+  deprecated. The image name is lowercased, since GHCR
+  rejects uppercase and `github.repository` keeps the owner's casing.
+
+Verified with a real `docker run` of the built image and a bind-mounted `/data`:
+- it refuses to start without `LARDER_DB_PASSWORD`, with a clear message;
+- first start initializes Postgres and runs migrations;
+- register, then a recipe whose lines the sidecar parses, then the meal plan, pantry and a
+  shopping list with the Pantry group all work;
+- the web UI and favicon are served;
+- process users are `postgres` / `larder` / `larder`, and only 8080 listens outside loopback;
+- Postgres over TCP without the password is refused;
+- everything survives a restart;
+- killing the sidecar leaves the container up, and ingredient lines are saved as raw text;
+- `docker stop` exits in about a second with a clean Postgres shutdown, and a later start needs
+  no recovery;
+- killing the app stops the container.
+
+Compose was re-checked too: it builds the `runtime` target (no Postgres inside), comes up
+healthy, and the sidecar there now listens on 127.0.0.1 only. The workflow file itself can only
+run on GitHub, so it isn't verified beyond being valid YAML and running the same commands locally
+(backend tests, and the sidecar's pytest suite at 10 passed).

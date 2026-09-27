@@ -53,7 +53,18 @@ backend, frontend, and sidecar together, plus a `docker-compose.yml` with Postgr
 
 ## Quick start
 
-### Docker (recommended)
+### On a server (one image)
+
+```
+docker run -d -p 8080:8080 -e LARDER_DB_PASSWORD='<a real password>' -e TZ=America/New_York \
+  -v /srv/larder:/data ghcr.io/<owner>/larder:latest
+```
+
+One container with everything, Postgres included. The image is built and published by CI on
+every push to `main`. See [`docs/deployment.md`](docs/deployment.md) for the settings that
+matter (HTTPS, secure cookies, backups).
+
+### Docker Compose (local development)
 
 ```
 docker compose -f docker/docker-compose.yml up --build
@@ -103,6 +114,7 @@ lines, though it degrades gracefully to raw-text-only ingredients if that's unre
 - [`V1_PLAN.md`](V1_PLAN.md) — the phased build plan
 - [`AGENTS.md`](AGENTS.md) — coding conventions for anyone (human or AI) working on the code
 - [`docs/decisions.md`](docs/decisions.md) — an append-only log of design decisions and why
+- [`docs/deployment.md`](docs/deployment.md) — how to run it on a server
 
 ## License
 

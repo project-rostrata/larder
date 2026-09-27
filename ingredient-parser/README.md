@@ -72,3 +72,4 @@ trailing clauses, and quantity not appearing at the start of the line.
 | Variable | Default |
 |---|---|
 | `INGREDIENT_PARSER_PORT` | `8000` |
+| `INGREDIENT_PARSER_HOST` | `0.0.0.0` (the bundled larder images set `127.0.0.1`) |

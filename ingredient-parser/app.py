@@ -24,6 +24,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ingredient_parser import parse_ingredient
 
 PORT = int(os.environ.get("INGREDIENT_PARSER_PORT", "8000"))
+# 0.0.0.0 by default so the standalone sidecar image is reachable from other containers; the
+# bundled larder images set 127.0.0.1, since there the app is the only caller (docker/Dockerfile).
+HOST = os.environ.get("INGREDIENT_PARSER_HOST", "0.0.0.0")
 
 
 def _json_default(obj: object) -> object:
@@ -87,8 +90,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"ingredient-parser listening on port {PORT}", file=sys.stderr)
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    print(f"ingredient-parser listening on {HOST}:{PORT}", file=sys.stderr)
     server.serve_forever()
 
 

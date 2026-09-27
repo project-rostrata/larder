@@ -1,0 +1,96 @@
+# Builds and pushes the standalone all-in-one image (docker/Dockerfile's `standalone` stage: app,
+# ingredient-parser sidecar and Postgres in one container, see docs/deployment.md) to GHCR on
+# every push to main and on version tags. Same shape as shelf's workflow of the same name, and
+# hand-rolled with plain kotlinc/docker commands for the same reason: no third-party build/push
+# actions (docker/build-push-action, docker/metadata-action, ...) for commands this simple.
+# actions/checkout and actions/setup-python are GitHub's own first-party actions.
+name: Build and push Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch: {}
+
+env:
+  KOTLIN_VERSION: 2.4.20
+  KOTLIN_COMPILER_SHA256: 59e9ca74c7904ef2c122b12114937673ccce68de820a663f0ed66ccf8799e0b7
+
+jobs:
+  # Same checksummed kotlinc download as docker/Dockerfile's build stage. Gates the image build:
+  # a broken build or a failing test means nothing gets pushed.
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kotlinc
+        run: |
+          curl -fsSLo /tmp/kotlin-compiler.zip \
+            "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip"
+          echo "${KOTLIN_COMPILER_SHA256}  /tmp/kotlin-compiler.zip" | sha256sum -c -
+          sudo unzip -q /tmp/kotlin-compiler.zip -d /opt
+          echo "/opt/kotlinc/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch backend dependencies
+        run: backend/lib/fetch-deps.sh
+
+      - name: Build
+        run: backend/build.sh
+
+      - name: Test
+        run: backend/test.sh
+
+  # The sidecar's own tests (not in shelf, which has no second runtime). Same Python version,
+  # pinned requirements and NLTK data as the image.
+  test-ingredient-parser:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ingredient-parser
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt pytest
+          python -c "import nltk; nltk.download('averaged_perceptron_tagger_eng', quiet=True)"
+
+      - name: Test
+        run: python -m pytest -q
+
+  build-and-push:
+    needs: [test-backend, test-ingredient-parser]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push the standalone image
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          # GHCR image names must be lowercase; github.repository keeps the owner's casing.
+          IMAGE="${IMAGE,,}"
+          TAGS=("$IMAGE:sha-${GITHUB_SHA::7}")
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAGS+=("$IMAGE:${GITHUB_REF_NAME}")
+          else
+            TAGS+=("$IMAGE:latest")
+          fi
+
+          TAG_ARGS=()
+          for t in "${TAGS[@]}"; do TAG_ARGS+=(-t "$t"); done
+
+          docker build --target standalone -f docker/Dockerfile "${TAG_ARGS[@]}" .
+
+          for t in "${TAGS[@]}"; do docker push "$t"; done

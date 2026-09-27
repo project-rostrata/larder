@@ -13,3 +13,16 @@ Phase 10 — Docker packaging. Two files build the deployable image, one runs it
   Postgres is the only state.
 
 From the repo root: `docker compose -f docker/docker-compose.yml up --build`.
+
+For a server, the Dockerfile's last stage, `standalone`, adds Postgres to the same image so one
+`docker run` with one mounted `/data` directory is the whole deployment (same approach as
+shelf's):
+
+- `standalone-entrypoint.sh` — initializes Postgres under `/data/postgres` on first run, then
+  runs Postgres, the sidecar and the app. Postgres listens on `127.0.0.1` only; the app and
+  sidecar run as an unprivileged `larder` user. The container exits if Postgres or the app
+  exits, but not if only the sidecar does (same rule as `entrypoint.sh`).
+- CI (`.github/workflows/docker-build.yml`) builds and pushes it to GHCR. Build it locally with
+  `docker build --target standalone -f docker/Dockerfile -t larder:standalone .`
+
+See `docs/deployment.md` for how to run it.

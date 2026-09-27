@@ -1,6 +1,12 @@
 <!-- An open book silhouette (a recipe book), filled in the accent color directly since a
-     favicon can't reach CSS custom properties -- same constraint and approach as shelf's own
-     favicon.svg. Keep in sync by hand with the accent color in style.css if it ever changes. -->
+     favicon can't reach CSS custom properties; same constraint and approach as shelf's own
+     favicon.svg. The media query swaps to the lighter dark-mode accent (style.css's
+     accent-on-surface) so it doesn't disappear on a dark tab bar. favicon.ico and
+     apple-touch-icon.png are PNG renders of this same path for browsers that don't use SVG
+     icons; keep all three in sync by hand with style.css's accent colors if they ever change.
+     NOTE: never put a double hyphen in this comment. XML forbids it inside comments, and the
+     browser then silently drops the whole icon (this file shipped broken that way at first). -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <path d="M12 5c-1.8-1.3-5-1.7-8-1v14c3-.7 6.2-.3 8 1 1.8-1.3 5-1.7 8-1V4c-3-.7-6.2-.3-8 1Z" fill="#5E7A32"/>
+  <style>path { fill: #5E7A32; } @media (prefers-color-scheme: dark) { path { fill: #93B558; } }</style>
+  <path d="M12 5c-1.8-1.3-5-1.7-8-1v14c3-.7 6.2-.3 8 1 1.8-1.3 5-1.7 8-1V4c-3-.7-6.2-.3-8 1Z"/>
 </svg>

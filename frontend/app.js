@@ -11,6 +11,7 @@ import { MealPlanHistory } from "./src/views/MealPlanHistory.js";
 import { PastMealPlan } from "./src/views/PastMealPlan.js";
 import { ShoppingList } from "./src/views/ShoppingList.js";
 import { IngredientMatches } from "./src/views/IngredientMatches.js";
+import { Pantry } from "./src/views/Pantry.js";
 import { Toast } from "./src/components/Toast.js";
 
 const { div } = van.tags;
@@ -24,6 +25,7 @@ function MainApp() {
   if (state.view.val === "meal-plan") return PastMealPlan();
   if (state.view.val === "shopping") return ShoppingList();
   if (state.view.val === "matches") return IngredientMatches();
+  if (state.view.val === "pantry") return Pantry();
   if (state.view.val === "recipe-new" || state.view.val === "recipe-edit") return RecipeForm();
   return RecipeList();
 }
@@ -49,3 +51,16 @@ api.me().then(
   (user) => { state.user.val = user; loadForCurrentView(); },
   () => { state.user.val = null; },
 ).finally(() => { state.authChecked.val = true; });
+
+// Closes an open shopping-list ⋯ menu on any click outside it, or on Escape. Attached once here
+// rather than per view mount (same approach as shelf's row-action menu).
+document.addEventListener("click", (e) => {
+  if (state.openMenuId.val && !e.target.closest(".shop-menu-wrap")) state.openMenuId.val = null;
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.openMenuId.val) {
+    const id = state.openMenuId.val;
+    state.openMenuId.val = null;
+    document.querySelector(`.shop-item[data-id="${id}"] .shop-menu-button`)?.focus();
+  }
+});

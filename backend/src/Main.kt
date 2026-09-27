@@ -12,6 +12,7 @@ import larder.api.MealPlanStartHandler
 import larder.api.ShoppingListItemHandlers
 import larder.api.LogoutHandler
 import larder.api.MeHandler
+import larder.api.PantryHandlers
 import larder.api.RecipeCreateHandler
 import larder.api.RecipeDeleteHandler
 import larder.api.RecipeGetHandler
@@ -30,6 +31,7 @@ import larder.db.ConnectionPool
 import larder.db.Database
 import larder.db.IngredientRepository
 import larder.db.MealPlanRepository
+import larder.db.PantryRepository
 import larder.db.ShoppingListRepository
 import larder.db.MigrationRunner
 import larder.db.RecipeRepository
@@ -75,6 +77,7 @@ fun main() {
     val ingredients = IngredientRepository(database)
     val mealPlan = MealPlanRepository(database)
     val shoppingLists = ShoppingListRepository(database)
+    val pantry = PantryRepository(database)
     val units = UnitRepository(database)
     val ingredientParser = SidecarIngredientLineParser(ingredientParserUrl)
     val ingredientResolver = IngredientResolver(units, ingredients)
@@ -93,6 +96,7 @@ fun main() {
     val recipeFileImportHandler = RecipeFileImportHandler(recipes, ingredientParser, ingredientResolver)
     val ingredientMergeHandler = IngredientMergeHandler(ingredients)
     val ingredientMatchesHandler = IngredientMatchesHandler(ingredients)
+    val pantryHandlers = PantryHandlers(pantry, ingredients)
     val mealPlanListHandler = MealPlanListHandler(mealPlan)
     val mealPlanCreateHandler = MealPlanCreateHandler(mealPlan, recipes)
     val mealPlanDeleteHandler = MealPlanDeleteHandler(mealPlan)
@@ -117,6 +121,9 @@ fun main() {
     router.post("/api/recipes/import-files", requireAuth(sessions, users, recipeFileImportHandler::handle))
     router.put("/api/recipes/:id", requireAuth(sessions, users, recipeUpdateHandler::handle))
     router.delete("/api/recipes/:id", requireAuth(sessions, users, recipeDeleteHandler::handle))
+    router.get("/api/pantry", requireAuth(sessions, users, pantryHandlers::list))
+    router.post("/api/pantry", requireAuth(sessions, users, pantryHandlers::add))
+    router.delete("/api/pantry/:ingredientId", requireAuth(sessions, users, pantryHandlers::remove))
     router.get("/api/ingredients/matches", requireAuth(sessions, users, ingredientMatchesHandler::handle))
     router.post(
         "/api/ingredients/:id/merge-into/:targetId",

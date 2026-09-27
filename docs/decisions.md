@@ -897,3 +897,35 @@ At the human's request, the recipe line under an item is now one line per contri
 string. The "Recipe: amount" wording is unchanged. Cards vary in height as a result, which the
 human accepted: a meal plan is expected to hold about 5 recipes, so an item rarely has many
 lines.
+
+## Pantry
+
+At the human's request: a per-user pantry of kitchen staples (salt, oil, butter), empty by
+default. Pantry items still appear on the shopping list, in their own "Pantry" group and
+without an amount to buy. Asked and answered:
+- **Name:** "Pantry", not "larder", which would collide with the app's own name.
+- **Managing it:** mark items from the shopping list, plus a Pantry page for viewing, adding
+  by name and removing. The page is reached from a "Pantry" button on the list, not a nav tab.
+- **Row action:** each row's ✕ became a **⋯ menu** ("Add to pantry" / "Remove from pantry",
+  "Remove from list"), keeping row width the same, and it's the place for future row actions.
+  We briefly tried an inline ✕ beside a pantry-only ⋯; the human preferred the single menu,
+  and one button leaves the item name more room on a phone.
+- **Recipe lines:** pantry rows keep them, so you can check you have enough.
+
+Design:
+- **Applied when the list is read, not stored in it.** `ShoppingListRepository.find` loads the
+  owner's pantry and the response groups and strips amounts accordingly. Marking salt mid-shop
+  just regroups it: no rebuild, and checks, merges and order survive. Removing it from the
+  pantry brings the amount back.
+- **Response shape:** `items` became `groups: [{title, note, items}]` (main list, then Pantry;
+  empty groups omitted; checked items sink within their own group). Each group renders in its
+  own container, so drag-reorder naturally stays within a group.
+- **Ingredients only:** pantry membership is by ingredient, so hand-added and unparsed items
+  can't be pantry items, and their menus don't offer it. Adding by name on the Pantry page goes
+  through the same name normalization and alias lookup as recipe lines.
+- **Merges carry the pantry along:** `IngredientRepository.mergeInto` now re-points pantry rows
+  to the surviving ingredient before deleting the old one. Otherwise the FK cascade would
+  silently drop "white rice" from a pantry when it's merged into "rice" (verified).
+- **Amount wrapping fix found in the screenshots:** the amount column could break inside one
+  amount ("2 / tablespoons"). The API now also sends `amountParts`, and the UI keeps each part
+  on one line, breaking only between the parts of a merged amount ("3 cloves + / 20 grams").

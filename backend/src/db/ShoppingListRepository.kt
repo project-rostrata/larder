@@ -43,6 +43,9 @@ data class ShoppingListDetail(
     val summary: ShoppingListSummaryRow,
     val items: List<ShoppingListItemRow>,
     val sources: List<ShoppingListSourceRow>,
+    // The owner's pantry, applied when the list is displayed (grouping, no amount) -- never
+    // stored in the list itself.
+    val pantryIngredientIds: Set<UUID>,
 )
 
 // A recipe to gather ingredients from, with its scaling and optional meal-plan origin.
@@ -201,7 +204,12 @@ class ShoppingListRepository(private val database: Database) {
             bind = { it.setObject(1, listId) },
             mapRow = ::toSource,
         )
-        return ShoppingListDetail(summary, items, sources)
+        val pantry = database.queryList(
+            "SELECT ingredient_id FROM pantry_items WHERE owner_id = ?",
+            bind = { it.setObject(1, ownerId) },
+            mapRow = { it.getObject("ingredient_id", UUID::class.java) },
+        ).toSet()
+        return ShoppingListDetail(summary, items, sources, pantry)
     }
 
     // Every item write below verifies, inside its own transaction or WHERE clause, that the list

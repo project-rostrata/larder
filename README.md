@@ -86,7 +86,7 @@ Port 8080 by default; visit `http://localhost:8080/` for the UI. Routes so far:
 `{id}`), `POST /api/recipes/import`, `POST /api/recipes/import-files` (Nextcloud Cookbook `recipe.json`), `POST /api/ingredients/{id}/merge-into/{targetId}`,
 `GET /api/meal-plan`, `POST /api/meal-plan`, `DELETE /api/meal-plan/{id}`,
 `GET/POST /api/meal-plans`, `GET /api/meal-plans/{id}`,
-`GET /api/shopping-list` (the current plan's list),
+`GET /api/shopping-list` (the current plan's list), `GET/POST /api/pantry`, `DELETE /api/pantry/{ingredientId}`,
 `POST /api/shopping-lists/{id}/items`, `PATCH/DELETE /api/shopping-lists/{id}/items/{itemId}`,
 `POST /api/shopping-lists/{id}/items/merge`, `POST /api/shopping-lists/{id}/items/{itemId}/move`. Any
 other `GET` outside `/api/` serves the frontend from `LARDER_FRONTEND_DIR` (defaults to

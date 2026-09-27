@@ -109,6 +109,17 @@ class IngredientRepository(private val database: Database) {
                 "UPDATE unit_conversions SET ingredient_id = ? WHERE ingredient_id = ?",
                 bind = { it.setObject(1, targetId); it.setObject(2, id) },
             )
+            // Pantry rows follow the ingredient too; without this the cascade below would silently
+            // drop the merged-away ingredient from people's pantries.
+            tx.update(
+                """
+                INSERT INTO pantry_items (owner_id, ingredient_id, created_at)
+                SELECT owner_id, ?, created_at FROM pantry_items WHERE ingredient_id = ?
+                ON CONFLICT DO NOTHING
+                """.trimIndent(),
+                bind = { it.setObject(1, targetId); it.setObject(2, id) },
+            )
+            tx.update("DELETE FROM pantry_items WHERE ingredient_id = ?", bind = { it.setObject(1, id) })
             tx.update("DELETE FROM ingredients WHERE id = ?", bind = { it.setObject(1, id) })
         }
     }

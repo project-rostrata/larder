@@ -5,9 +5,11 @@ import { applyItemChange } from "../shoppingLists.js";
 import { TopBar } from "../components/TopBar.js";
 import { DialogHost } from "../components/DialogHost.js";
 import { navigate } from "../router.js";
-import { CheckIcon, CloseIcon, PlusIcon, GripIcon } from "../icons.js";
+import { CheckIcon, PlusIcon, GripIcon, MoreIcon } from "../icons.js";
+import { setPantryFromList } from "../pantry.js";
+import { emptyNode } from "../vanHelpers.js";
 
-const { div, h1, span, button, form, input, label } = van.tags;
+const { div, h1, h2, p, span, button, form, input, label } = van.tags;
 
 const rowOf = (id) => document.querySelector(`.shop-item[data-id="${id}"]`);
 
@@ -93,7 +95,43 @@ function ItemText(item) {
   return span(
     { class: "shop-item-text" },
     span({ class: "shop-name" }, item.nameDisplay),
-    item.amountDisplay ? span({ class: "shop-amount" }, item.amountDisplay) : null,
+    item.amountParts.length
+      ? span(
+        { class: "shop-amount" },
+        ...item.amountParts.flatMap((part, i) => [i ? " + " : null, span({ class: "shop-amount-part" }, part)]),
+      )
+      : null,
+  );
+}
+
+// A row's ⋯ menu: remove from the list, and add to / remove from the pantry (parsed ingredients
+// only). Its own binding, so opening a menu doesn't re-render the list.
+function RowMenu(list, item) {
+  const act = (fn) => () => { state.openMenuId.val = null; fn(); };
+  const entries = [
+    button({ role: "menuitem", class: "danger", onclick: act(() => applyItemChange(api.deleteShoppingItem(list.id, item.id))) }, "Remove from list"),
+  ];
+  if (item.ingredientId) {
+    entries.unshift(item.inPantry
+      ? button({ role: "menuitem", onclick: act(() => setPantryFromList(item, false)) }, "Remove from pantry")
+      : button({ role: "menuitem", onclick: act(() => setPantryFromList(item, true)) }, "Add to pantry"));
+  }
+  return div(
+    { class: "shop-menu-wrap" },
+    button(
+      {
+        class: "icon-btn shop-menu-button",
+        "aria-label": `Actions for ${item.display}`,
+        "aria-haspopup": "menu",
+        "aria-expanded": () => String(state.openMenuId.val === item.id),
+        onclick: () => {
+          state.openMenuId.val = state.openMenuId.val === item.id ? null : item.id;
+          if (state.openMenuId.val) requestAnimationFrame(() => document.querySelector(".shop-menu [role=menuitem]")?.focus());
+        },
+      },
+      MoreIcon({ size: 20, strokeWidth: 3 }),
+    ),
+    () => (state.openMenuId.val === item.id ? div({ class: "shop-menu", role: "menu" }, ...entries) : emptyNode()),
   );
 }
 
@@ -168,14 +206,7 @@ export function ShoppingList() {
         ItemText(item),
         item.sourceLines.length ? div({ class: "shop-item-sources" }, item.sourceLines.map((line) => div(line))) : null,
       ),
-      button(
-        {
-          class: "icon-btn",
-          "aria-label": `Remove ${item.display}`,
-          onclick: () => applyItemChange(api.deleteShoppingItem(list.id, item.id)),
-        },
-        CloseIcon(),
-      ),
+      RowMenu(list, item),
     );
   }
 
@@ -198,7 +229,11 @@ export function ShoppingList() {
               () => `Merge (${selected.val.length})`,
             ),
           )
-          : button({ class: "btn-ghost", onclick: () => { selecting.val = true; } }, "Select to merge")),
+          : div(
+            { class: "recipe-detail-actions" },
+            button({ class: "btn-ghost", onclick: () => { selecting.val = true; } }, "Select to merge"),
+            button({ class: "btn-ghost", onclick: () => navigate("pantry") }, "Pantry"),
+          )),
       ),
     );
   }
@@ -244,15 +279,27 @@ export function ShoppingList() {
           }),
           button({ type: "submit", class: "btn-ghost" }, PlusIcon(), "Add"),
         )),
-      div(
-        { class: "meal-plan-list shop-list" },
-        () => {
-          const list = state.currentShoppingList.val;
-          if (!list) return div();
-          if (list.items.length === 0) return div({ class: "empty-state" }, "This list is empty.");
-          return div({ style: "display:contents" }, ...list.items.map((item) => Item(list, item)));
-        },
-      ),
+      // One container per API-built group (main list, then Pantry), so drag-reorder stays within
+      // a group: startDrag/keyMove only look at a row's siblings.
+      () => {
+        const list = state.currentShoppingList.val;
+        if (!list) return div();
+        if (list.groups.length === 0) return div({ class: "empty-state" }, "This list is empty.");
+        return div(
+          {},
+          ...list.groups.map((group) => div(
+            { class: "shop-group" },
+            group.title
+              ? div(
+                { class: "shop-group-header" },
+                h2({ class: "recipe-section-title" }, group.title),
+                group.note ? p({ class: "shop-group-note" }, group.note) : null,
+              )
+              : null,
+            div({ class: "meal-plan-list shop-list" }, ...group.items.map((item) => Item(list, item))),
+          )),
+        );
+      },
       ),
     ),
     DialogHost(),

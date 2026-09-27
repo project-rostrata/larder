@@ -52,6 +52,9 @@ export const api = {
   getMealPlan: (id) => request("GET", `/api/meal-plans/${id}`),
 
   getCurrentShoppingList: () => request("GET", "/api/shopping-list"),
+  getPantry: () => request("GET", "/api/pantry"),
+  addToPantry: (body) => request("POST", "/api/pantry", body),
+  removeFromPantry: (ingredientId) => request("DELETE", `/api/pantry/${ingredientId}`),
   addShoppingItem: (id, text) => request("POST", `/api/shopping-lists/${id}/items`, { text }),
   updateShoppingItem: (id, itemId, body) => request("PATCH", `/api/shopping-lists/${id}/items/${itemId}`, body),
   moveShoppingItem: (id, itemId, beforeItemId) =>

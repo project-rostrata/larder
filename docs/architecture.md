@@ -308,6 +308,9 @@ larder/
                                        Cookbook recipe.json), each imported independently; per-file
                                        results + summary. Max 200 files, 1 MB each
         ImportedRecipeMapping.kt    ImportedRecipe -> RecipeRequest, shared by URL and file import
+        PantryHandlers.kt           GET/POST /api/pantry (add by ingredientId or name), DELETE
+                                       /api/pantry/{ingredientId}; owner-scoped; returns the whole
+                                       pantry + summary
         IngredientMatchesHandler.kt GET /api/ingredients/matches: learned matches (ingredient <-
                                        aliases) + summary; global, not owner-scoped
         IngredientMergeHandler.kt          POST /api/ingredients/{id}/merge-into/{targetId} — no
@@ -458,6 +461,7 @@ larder/
         RecipeForm.js                      shared create/edit form: scalar fields + dynamic
                                              ingredient/instruction rows (display:contents
                                              wrapper, same pattern as RecipeList's card grid)
+        Pantry.js                          /?view=pantry, from the shopping list's Pantry button
         IngredientMatches.js               /?view=matches, read-only, deliberately not linked
         ShoppingList.js                    the Shopping tab (current plan's list): check off,
                                              sources, remove, add, "Select to merge" (first pick survives), drag
@@ -470,6 +474,7 @@ larder/
       0001_initial_schema.sql   all v1 tables, indexes, and constraints (PROJECT_BRIEF.md §7)
       0002_seed_units.sql       21 starter units (volume/mass/count) with conversion factors
       0003_meal_plan_labels.sql  meal plan becomes a flat list: drops plan_date/meal_slot, adds label
+      0007_pantry.sql            pantry_items (owner_id, ingredient_id) -- a user's kitchen staples
       0006_recipe_notes.sql       recipes.notes (free text; paragraphs separated by a blank line)
       0005_shopping_list_per_plan.sql  shopping_lists.meal_plan_id (one list per plan)
       0004_meal_plans.sql        meal_plans table (one active per owner via a partial unique index,

@@ -10,7 +10,7 @@ export const state = {
   // see src/router.js.
   view: van.state("recipes"), // "recipes" | "recipe" | "recipe-new" | "recipe-edit" |
   //   "meal-plans" (history) | "meal-plan" (one past plan) | "shopping" |
-  //   "matches" (learned ingredient matches -- unlinked, reached only by URL)
+  //   "matches" (learned ingredient matches -- unlinked, reached only by URL) | "pantry"
   currentId: van.state(null), // the ?id= of the current view (a recipe or a shopping list)
 
   recipes: van.state([]), // RecipeResponse[] for the current tag filter
@@ -32,6 +32,10 @@ export const state = {
   currentShoppingList: van.state(null),
   currentShoppingListMessage: van.state(null),
   currentShoppingListLoading: van.state(false),
+
+  pantry: van.state(null), // PantryResponse | null
+  pantryLoading: van.state(false),
+  openMenuId: van.state(null), // the shopping-list item whose ⋯ menu is open, if any
 
   ingredientMatches: van.state(null), // IngredientMatchesResponse | null
   ingredientMatchesLoading: van.state(false),

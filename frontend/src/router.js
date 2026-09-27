@@ -11,6 +11,7 @@ import { state } from "./state.js";
 import { refreshRecipeList, loadRecipe, loadIngredientMatches } from "./recipes.js";
 import { refreshMealPlan, refreshMealPlanHistory, loadMealPlan } from "./mealPlan.js";
 import { loadCurrentShoppingList } from "./shoppingLists.js";
+import { loadPantry } from "./pantry.js";
 
 function paramsFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -37,6 +38,8 @@ export function loadForCurrentView() {
     if (state.currentId.val) loadMealPlan(state.currentId.val);
   } else if (state.view.val === "shopping") {
     loadCurrentShoppingList();
+  } else if (state.view.val === "pantry") {
+    loadPantry();
   } else if (state.view.val === "matches") {
     loadIngredientMatches();
   }

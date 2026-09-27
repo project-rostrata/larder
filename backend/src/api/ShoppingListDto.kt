@@ -40,15 +40,29 @@ data class ShoppingListItemResponse(
     val name: String,
     // Ready to render as one string: "4 1/8 cups flour", "2 cups + 3 cloves garlic", "salt".
     val display: String,
-    // The same, in two parts for styling: "4 1/8 cups" / "flour". The amount is null for an
-    // item with no quantity. display == amount + " " + name.
+    // The same, in two parts for styling (amount emphasized): "4 1/8 cups" / "flour". The
+    // amount is null for an item with no quantity. display == amount + " " + name.
     val amountDisplay: String?,
+    // amountDisplay's pieces -- one normally, several for a merge whose units don't combine
+    // ("3 cloves", "20 grams"). The UI keeps each piece on one line and only breaks between.
+    val amountParts: List<String>,
     val nameDisplay: String,
     val checked: Boolean,
+    // Null for a hand-added or unparsed item -- only parsed ingredients can go in the pantry.
+    val ingredientId: String?,
+    // In the owner's pantry: listed in the Pantry group, with no amount to buy.
+    val inPantry: Boolean,
     // One ready-to-show line per contributing recipe: ["Chili: 1 cup", "Pancakes: 2 tablespoons"].
     // Empty for a manual item.
     val sourceLines: List<String>,
     val sources: List<ShoppingListSourceResponse>,
+)
+
+@Serializable
+data class ShoppingListGroupResponse(
+    val title: String?,
+    val note: String?,
+    val items: List<ShoppingListItemResponse>,
 )
 
 @Serializable
@@ -60,7 +74,9 @@ data class ShoppingListResponse(
     val checkedCount: Int,
     val createdDisplay: String,
     val progressDisplay: String,
-    val items: List<ShoppingListItemResponse>,
+    // Ready-made groups in display order: the main list (title null), then "Pantry". Empty
+    // groups are omitted; checked items sit at the bottom of their own group.
+    val groups: List<ShoppingListGroupResponse>,
     // Set only by a merge: what was (or couldn't be) remembered for future lists. Show as-is.
     val notice: String? = null,
 )
@@ -92,16 +108,19 @@ fun ShoppingListDetail.toResponse(combiner: Combiner, units: Map<java.util.UUID,
         checkedCount = summary.checkedCount,
         createdDisplay = formatCreated(summary.createdAt),
         progressDisplay = formatProgress(summary.itemCount, summary.checkedCount),
-        items = items.map { item ->
+        groups = items.map { item ->
             val itemSources = sourcesByItem[item.id].orEmpty()
-            val amount = when {
-                item.quantity != null -> formatAmount(item.quantity, unitName(item.unitId))
+            val inPantry = item.ingredientId != null && item.ingredientId in pantryIngredientIds
+            val amountParts = when {
+                // Pantry staples are on the list to check you have them, not to buy an amount.
+                inPantry -> emptyList()
+                item.quantity != null -> listOf(formatAmount(item.quantity, unitName(item.unitId)))
                 // No single total -- e.g. a manual merge of cups and cloves. Show each part.
                 item.ingredientId != null -> combiner.amounts(itemSources.map { it.toLine() }, item.ingredientId)
-                    .takeIf { it.isNotEmpty() }
-                    ?.joinToString(" + ") { formatAmount(it.quantity, unitName(it.unitId)) }
-                else -> null
+                    .map { formatAmount(it.quantity, unitName(it.unitId)) }
+                else -> emptyList()
             }
+            val amount = amountParts.takeIf { it.isNotEmpty() }?.joinToString(" + ")
             val display = listOfNotNull(amount, item.name).joinToString(" ")
             val sourceResponses = itemSources.map { src ->
                 ShoppingListSourceResponse(
@@ -119,11 +138,26 @@ fun ShoppingListDetail.toResponse(combiner: Combiner, units: Map<java.util.UUID,
                 name = item.name,
                 display = display,
                 amountDisplay = amount,
+                amountParts = amountParts,
                 nameDisplay = item.name,
                 checked = item.checked,
+                ingredientId = item.ingredientId?.toString(),
+                inPantry = inPantry,
                 sourceLines = sourceResponses.map { "${it.recipeTitle}: ${it.amount ?: it.rawText}" },
                 sources = sourceResponses,
             )
+        }.let(::groupForDisplay),
+    )
+}
+
+// Items arrive in display order (unchecked first, then by sort order); splitting keeps that
+// order within each group.
+private fun groupForDisplay(items: List<ShoppingListItemResponse>): List<ShoppingListGroupResponse> {
+    val (pantry, main) = items.partition { it.inPantry }
+    return listOfNotNull(
+        main.takeIf { it.isNotEmpty() }?.let { ShoppingListGroupResponse(null, null, it) },
+        pantry.takeIf { it.isNotEmpty() }?.let {
+            ShoppingListGroupResponse("Pantry", "Already in your pantry — check you have enough.", it)
         },
     )
 }

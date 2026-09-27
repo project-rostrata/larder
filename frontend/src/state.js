@@ -9,7 +9,8 @@ export const state = {
   // Query-param view routing (?view=..., &id=...), matching shelf's own router.js pattern —
   // see src/router.js.
   view: van.state("recipes"), // "recipes" | "recipe" | "recipe-new" | "recipe-edit" |
-  //   "meal-plans" (history) | "meal-plan" (one past plan) | "shopping"
+  //   "meal-plans" (history) | "meal-plan" (one past plan) | "shopping" |
+  //   "matches" (learned ingredient matches -- unlinked, reached only by URL)
   currentId: van.state(null), // the ?id= of the current view (a recipe or a shopping list)
 
   recipes: van.state([]), // RecipeResponse[] for the current tag filter
@@ -31,6 +32,9 @@ export const state = {
   currentShoppingList: van.state(null),
   currentShoppingListMessage: van.state(null),
   currentShoppingListLoading: van.state(false),
+
+  ingredientMatches: van.state(null), // IngredientMatchesResponse | null
+  ingredientMatchesLoading: van.state(false),
 
   error: van.state(null), // string | null — drives the Toast component
   notice: van.state(null), // string | null — non-error Toast (e.g. "Added to meal plan")

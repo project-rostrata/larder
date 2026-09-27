@@ -38,6 +38,19 @@ class IngredientRepository(private val database: Database) {
         }
     }
 
+    // Every ingredient that other spellings resolve to (via ingredient_aliases), with those
+    // spellings -- i.e. the matches larder has learned. Global vocabulary, like the table itself.
+    fun listWithAliases(): List<Pair<IngredientRow, List<String>>> =
+        database.queryList(
+            """
+            SELECT i.id, i.name, i.plural_name, array_agg(a.alias ORDER BY lower(a.alias)) AS aliases
+            FROM ingredients i JOIN ingredient_aliases a ON a.ingredient_id = i.id
+            GROUP BY i.id, i.name, i.plural_name
+            ORDER BY lower(i.name)
+            """.trimIndent(),
+            mapRow = { rs -> toRow(rs) to ((rs.getArray("aliases")?.array as? Array<*>)?.map { it.toString() } ?: emptyList()) },
+        )
+
     fun findById(id: UUID): IngredientRow? =
         database.queryOneOrNull(
             "SELECT id, name, plural_name FROM ingredients WHERE id = ?",

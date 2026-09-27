@@ -826,3 +826,27 @@ re-importing always creates new copies (no de-duplication).
     deferred to v1.5 by the brief.
   - Flour by weight vs by volume needs a `unit_conversions` row, and that table has no seed data.
   - Remembered merges are the per-pair workaround for all of the above.
+
+## Plural/singular ingredient names: no automatic matching (for now)
+
+"onion" and "onions" (from real data) resolve to separate ingredients. Two automatic fixes were
+evaluated and both declined by the human:
+- **USDA foundation foods** (a parser option): it maps plurals and even some synonyms together,
+  but it also made confidently wrong matches in testing ("baking powder" → *Baobab powder*,
+  "rolled oats" → *Rolls, dinner, oat bran*), had coverage gaps, and was ~12× slower. A wrong
+  merge is silent, while a missed merge is visible and fixed in one tap.
+- **English suffix rules** (-ies → -y, -oes → -o, …): rejected as too "magic", and English-only.
+
+Plurals are merged by the person using the list, as they come up, with a remembered merge
+("Remember for future lists"). That's explicit, language-independent, and learned permanently
+into the ingredient aliases. Revisit only if the human asks. A suggestion-only approach
+(proposing merges for confirmation) was noted as a possible later option.
+
+## Unlinked "Ingredient matches" page
+
+At the human's request: a read-only page at `/?view=matches`, deliberately not linked from
+anywhere in the UI. It shows every ingredient that has other spellings resolving to it
+(`ingredient_aliases`), e.g. "rice" ← "white rice", so the effect of remembered merges is
+inspectable. `GET /api/ingredients/matches` builds the list and a summary line. It requires a
+session, but isn't owner-scoped, because ingredients are global vocabulary (the same exception
+as merge-into). There's no undo or editing there; nothing was asked for.

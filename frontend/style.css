@@ -202,6 +202,16 @@ button:disabled { opacity: .6; cursor: default; }
 .meal-plan { flex-grow: 1; overflow: auto; padding: 24px; max-width: 720px; margin: 0 auto; width: 100%; }
 .meal-plan-list { display: flex; flex-direction: column; gap: 8px; }
 
+/* ---- ingredient matches (unlinked page) ---- */
+
+.matches-summary { font-size: 14px; color: var(--text-secondary); margin: 0 0 16px; }
+.match-list { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.match-row { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr; gap: 12px; padding: 12px 16px; align-items: start; }
+.match-row + .match-row { border-top: 1px solid var(--border-soft); }
+.match-head { font: 600 12px var(--font-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--text-tertiary); }
+.match-name { font-weight: 600; font-size: 15px; }
+.match-aliases { display: flex; flex-wrap: wrap; gap: 6px; }
+
 /* ---- shopping lists ---- */
 
 .shop-list-card {

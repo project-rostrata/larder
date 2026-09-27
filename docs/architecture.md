@@ -308,6 +308,8 @@ larder/
                                        Cookbook recipe.json), each imported independently; per-file
                                        results + summary. Max 200 files, 1 MB each
         ImportedRecipeMapping.kt    ImportedRecipe -> RecipeRequest, shared by URL and file import
+        IngredientMatchesHandler.kt GET /api/ingredients/matches: learned matches (ingredient <-
+                                       aliases) + summary; global, not owner-scoped
         IngredientMergeHandler.kt          POST /api/ingredients/{id}/merge-into/{targetId} — no
                                              ownership check, ingredients are global
       recipeimport/
@@ -456,6 +458,7 @@ larder/
         RecipeForm.js                      shared create/edit form: scalar fields + dynamic
                                              ingredient/instruction rows (display:contents
                                              wrapper, same pattern as RecipeList's card grid)
+        IngredientMatches.js               /?view=matches, read-only, deliberately not linked
         ShoppingList.js                    the Shopping tab (current plan's list): check off,
                                              sources, remove, add, "Select to merge" (first pick survives), drag
                                              to reorder by grip (Pointer Events; arrow keys too)

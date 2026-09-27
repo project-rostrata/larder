@@ -24,3 +24,14 @@ export async function loadRecipe(id) {
     state.currentRecipeLoading.val = false;
   }
 }
+
+export async function loadIngredientMatches() {
+  state.ingredientMatchesLoading.val = true;
+  try {
+    state.ingredientMatches.val = await api.listIngredientMatches();
+  } catch (err) {
+    showError(err instanceof ApiError ? err.message : "Could not load ingredient matches");
+  } finally {
+    state.ingredientMatchesLoading.val = false;
+  }
+}

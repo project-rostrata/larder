@@ -1,5 +1,6 @@
 import com.sun.net.httpserver.HttpServer
 import larder.api.CurrentShoppingListHandler
+import larder.api.IngredientMatchesHandler
 import larder.api.IngredientMergeHandler
 import larder.api.LoginHandler
 import larder.api.MealPlanCreateHandler
@@ -91,6 +92,7 @@ fun main() {
     val recipeImportHandler = RecipeImportHandler(recipes, ingredientParser, ingredientResolver)
     val recipeFileImportHandler = RecipeFileImportHandler(recipes, ingredientParser, ingredientResolver)
     val ingredientMergeHandler = IngredientMergeHandler(ingredients)
+    val ingredientMatchesHandler = IngredientMatchesHandler(ingredients)
     val mealPlanListHandler = MealPlanListHandler(mealPlan)
     val mealPlanCreateHandler = MealPlanCreateHandler(mealPlan, recipes)
     val mealPlanDeleteHandler = MealPlanDeleteHandler(mealPlan)
@@ -115,6 +117,7 @@ fun main() {
     router.post("/api/recipes/import-files", requireAuth(sessions, users, recipeFileImportHandler::handle))
     router.put("/api/recipes/:id", requireAuth(sessions, users, recipeUpdateHandler::handle))
     router.delete("/api/recipes/:id", requireAuth(sessions, users, recipeDeleteHandler::handle))
+    router.get("/api/ingredients/matches", requireAuth(sessions, users, ingredientMatchesHandler::handle))
     router.post(
         "/api/ingredients/:id/merge-into/:targetId",
         requireAuth(sessions, users, ingredientMergeHandler::handle),

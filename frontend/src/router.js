@@ -8,7 +8,7 @@
 // effect isn't guaranteed the same lifecycle a rendered binding gets, so explicit is simpler to
 // reason about here.
 import { state } from "./state.js";
-import { refreshRecipeList, loadRecipe } from "./recipes.js";
+import { refreshRecipeList, loadRecipe, loadIngredientMatches } from "./recipes.js";
 import { refreshMealPlan, refreshMealPlanHistory, loadMealPlan } from "./mealPlan.js";
 import { loadCurrentShoppingList } from "./shoppingLists.js";
 
@@ -37,6 +37,8 @@ export function loadForCurrentView() {
     if (state.currentId.val) loadMealPlan(state.currentId.val);
   } else if (state.view.val === "shopping") {
     loadCurrentShoppingList();
+  } else if (state.view.val === "matches") {
+    loadIngredientMatches();
   }
 }
 

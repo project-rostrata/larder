@@ -10,6 +10,7 @@ import { RecipeForm } from "./src/views/RecipeForm.js";
 import { MealPlanHistory } from "./src/views/MealPlanHistory.js";
 import { PastMealPlan } from "./src/views/PastMealPlan.js";
 import { ShoppingList } from "./src/views/ShoppingList.js";
+import { IngredientMatches } from "./src/views/IngredientMatches.js";
 import { Toast } from "./src/components/Toast.js";
 
 const { div } = van.tags;
@@ -22,6 +23,7 @@ function MainApp() {
   if (state.view.val === "meal-plans") return MealPlanHistory();
   if (state.view.val === "meal-plan") return PastMealPlan();
   if (state.view.val === "shopping") return ShoppingList();
+  if (state.view.val === "matches") return IngredientMatches();
   if (state.view.val === "recipe-new" || state.view.val === "recipe-edit") return RecipeForm();
   return RecipeList();
 }

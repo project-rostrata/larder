@@ -41,6 +41,7 @@ export const api = {
   updateRecipe: (id, body) => request("PUT", `/api/recipes/${id}`, body),
   deleteRecipe: (id) => request("DELETE", `/api/recipes/${id}`),
   importRecipe: (url) => request("POST", "/api/recipes/import", { url }),
+  listIngredientMatches: () => request("GET", "/api/ingredients/matches"),
   importRecipeFiles: (files) => request("POST", "/api/recipes/import-files", { files }),
 
   listMealPlan: () => request("GET", "/api/meal-plan"),

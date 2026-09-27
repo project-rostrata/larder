@@ -38,11 +38,16 @@ data class ShoppingListSourceResponse(
 data class ShoppingListItemResponse(
     val id: String,
     val name: String,
-    // Ready to render: "4 1/8 cups flour", "garlic (2 cups + 3 cloves)", "salt to taste".
+    // Ready to render as one string: "4 1/8 cups flour", "2 cups + 3 cloves garlic", "salt".
     val display: String,
+    // The same, in two parts for styling: "4 1/8 cups" / "flour". The amount is null for an
+    // item with no quantity. display == amount + " " + name.
+    val amountDisplay: String?,
+    val nameDisplay: String,
     val checked: Boolean,
-    // "Chili: 1 1/2 cups · Pancakes: 2 tablespoons", or null for a manual item.
-    val sourcesDisplay: String?,
+    // One ready-to-show line per contributing recipe: ["Chili: 1 cup", "Pancakes: 2 tablespoons"].
+    // Empty for a manual item.
+    val sourceLines: List<String>,
     val sources: List<ShoppingListSourceResponse>,
 )
 
@@ -89,16 +94,15 @@ fun ShoppingListDetail.toResponse(combiner: Combiner, units: Map<java.util.UUID,
         progressDisplay = formatProgress(summary.itemCount, summary.checkedCount),
         items = items.map { item ->
             val itemSources = sourcesByItem[item.id].orEmpty()
-            val display = when {
-                item.quantity != null -> "${formatAmount(item.quantity, unitName(item.unitId))} ${item.name}"
+            val amount = when {
+                item.quantity != null -> formatAmount(item.quantity, unitName(item.unitId))
                 // No single total -- e.g. a manual merge of cups and cloves. Show each part.
-                item.ingredientId != null -> {
-                    val parts = combiner.amounts(itemSources.map { it.toLine() }, item.ingredientId)
-                    if (parts.isEmpty()) item.name
-                    else "${item.name} (${parts.joinToString(" + ") { formatAmount(it.quantity, unitName(it.unitId)) }})"
-                }
-                else -> item.name
+                item.ingredientId != null -> combiner.amounts(itemSources.map { it.toLine() }, item.ingredientId)
+                    .takeIf { it.isNotEmpty() }
+                    ?.joinToString(" + ") { formatAmount(it.quantity, unitName(it.unitId)) }
+                else -> null
             }
+            val display = listOfNotNull(amount, item.name).joinToString(" ")
             val sourceResponses = itemSources.map { src ->
                 ShoppingListSourceResponse(
                     recipeId = src.recipeId?.toString(),
@@ -114,9 +118,10 @@ fun ShoppingListDetail.toResponse(combiner: Combiner, units: Map<java.util.UUID,
                 id = item.id.toString(),
                 name = item.name,
                 display = display,
+                amountDisplay = amount,
+                nameDisplay = item.name,
                 checked = item.checked,
-                sourcesDisplay = sourceResponses.takeIf { it.isNotEmpty() }
-                    ?.joinToString(" · ") { "${it.recipeTitle}: ${it.amount ?: it.rawText}" },
+                sourceLines = sourceResponses.map { "${it.recipeTitle}: ${it.amount ?: it.rawText}" },
                 sources = sourceResponses,
             )
         },

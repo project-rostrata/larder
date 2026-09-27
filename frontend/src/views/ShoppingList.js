@@ -87,6 +87,16 @@ async function keyMove(e, list, item) {
   if (await applyItemChange(api.moveShoppingItem(list.id, item.id, before))) refocusGrip(item.id);
 }
 
+// Name first (what you scan for in the store), amount right-aligned and quieter -- borrowed
+// from Mealime's list. Both parts come ready-made from the API.
+function ItemText(item) {
+  return span(
+    { class: "shop-item-text" },
+    span({ class: "shop-name" }, item.nameDisplay),
+    item.amountDisplay ? span({ class: "shop-amount" }, item.amountDisplay) : null,
+  );
+}
+
 // Merge-mode state lives with the view: entering the view (a fresh mount) always starts in
 // normal check-off mode.
 export function ShoppingList() {
@@ -131,8 +141,8 @@ export function ShoppingList() {
         span({ class: "shop-pick" }, order >= 0 ? String(order + 1) : ""),
         div(
           { class: "shop-item-main" },
-          span({ class: "shop-item-text" }, item.display),
-          item.sourcesDisplay ? div({ class: "shop-item-sources" }, item.sourcesDisplay) : null,
+          ItemText(item),
+          item.sourceLines.length ? div({ class: "shop-item-sources" }, item.sourceLines.map((line) => div(line))) : null,
         ),
       );
     }
@@ -155,8 +165,8 @@ export function ShoppingList() {
       ),
       div(
         { class: "shop-item-main", onclick: toggle },
-        span({ class: "shop-item-text" }, item.display),
-        item.sourcesDisplay ? div({ class: "shop-item-sources" }, item.sourcesDisplay) : null,
+        ItemText(item),
+        item.sourceLines.length ? div({ class: "shop-item-sources" }, item.sourceLines.map((line) => div(line))) : null,
       ),
       button(
         {
@@ -197,7 +207,7 @@ export function ShoppingList() {
     { class: "app-shell" },
     TopBar(),
     div(
-      { class: "meal-plan" },
+      { class: "meal-plan shop-page" },
       () => {
         const list = state.currentShoppingList.val;
         if (list) return Header(list);
@@ -235,7 +245,7 @@ export function ShoppingList() {
           button({ type: "submit", class: "btn-ghost" }, PlusIcon(), "Add"),
         )),
       div(
-        { class: "meal-plan-list" },
+        { class: "meal-plan-list shop-list" },
         () => {
           const list = state.currentShoppingList.val;
           if (!list) return div();

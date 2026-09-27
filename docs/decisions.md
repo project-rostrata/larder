@@ -850,3 +850,50 @@ anywhere in the UI. It shows every ingredient that has other spellings resolving
 inspectable. `GET /api/ingredients/matches` builds the list and a summary line. It requires a
 session, but isn't owner-scoped, because ingredients are global vocabulary (the same exception
 as merge-into). There's no undo or editing there; nothing was asked for.
+
+## Shopping list: legibility pass for phones
+
+The human found the list "a little small, flat, blends together" on a phone. Asked and
+answered: editing controls stay inline on every row (no edit mode), the recipe line stays,
+checked items keep their current behavior, and there's no wake lock or progress indicator.
+So this was styling plus one API addition:
+- **Amount and name as separate parts.** Items gain `amountDisplay` and `nameDisplay`, so the UI
+  can bold the amount without splitting strings itself; `display` is now always
+  `amount + " " + name`. That changed the incompatible-merge wording from "garlic (3 cloves +
+  20 grams)" to "3 cloves + 20 grams garlic", consistent with every other row.
+- **Rows** are distinct cards (stronger border, light shadow, 10px apart, ≥60px tall).
+- **Text:** 17px item text (18px on phones). The recipe line moved from 12px grey monospace
+  (~2.8:1 contrast) to 13px sans in the secondary color (measured 5.2:1 light, 6.7:1 dark).
+- **Tap targets:** a 32px checkbox on phones, and 44px grip and ✕.
+- **Checked items:** dimmed and set against the surface color.
+- **Verified:** a headless-Chrome suite at 390px measures all of the above, in both color
+  schemes.
+
+## Shopping list: borrowing from Mealime's layout
+
+The human likes Mealime's shopping list and shared a screenshot. From its design:
+- **Adopted:** the row text layout, with the **ingredient name first** (dark, medium weight)
+  and the **amount right-aligned in grey**, plus a larger plain page title. This reverses the
+  bold-amount-first from the legibility pass above: the name is what you scan for in a store.
+  With larder's grip, checkbox and ✕ on the row, a phone line is narrow, so the name and amount
+  never wrap as a unit. The name wraps its own words; the amount stays on the first line,
+  capped at 45% of the width and wrapping inside its own column when long ("3 cloves + 20
+  grams").
+- **Declined by the human:** flat divider rows (cards kept), round check circles (square
+  checkboxes kept), hiding the per-row controls (grip and ✕ kept), and dropping the recipe line
+  (kept, small and grey).
+- **Deferred:** grouping by store section (Produce, Dairy, …), Mealime's biggest feature. It
+  needs a section per ingredient. The parser's USDA food categories were tested as a source
+  and are unreliable for this (paprika → produce, Dijon mustard → mustard greens, baking powder
+  → "Fruits and Fruit Juices", and no category for brown rice or scallions), and the human said
+  grouping matters less if it's hard. If revisited, the fitting approach is manual per-ingredient
+  sections, remembered like merges.
+
+## Shopping list: one line per recipe under each item
+
+At the human's request, the recipe line under an item is now one line per contributing recipe
+("Chili: 1 cup" / "Pancakes: 2 tablespoons") instead of one joined "·" line. The API sends
+`sourceLines` (a list of ready-to-show strings), which replaces the single `sourcesDisplay`
+string. The "Recipe: amount" wording is unchanged. Cards vary in height as a result, which the
+human accepted: a meal plan is expected to hold about 5 recipes, so an item rarely has many
+lines.

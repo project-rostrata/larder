@@ -894,7 +894,7 @@ The human likes Mealime's shopping list and shared a screenshot. From its design
 At the human's request, the recipe line under an item is now one line per contributing recipe
 ("Chili: 1 cup" / "Pancakes: 2 tablespoons") instead of one joined "·" line. The API sends
 `sourceLines` (a list of ready-to-show strings), which replaces the single `sourcesDisplay`
-string. The "Recipe: amount" wording is unchanged. Cards vary in height as a result, which the
+string. The "Recipe: amount" wording is unchanged (later flipped to amount first, see below). Cards vary in height as a result, which the
 human accepted: a meal plan is expected to hold about 5 recipes, so an item rarely has many
 lines.
 
@@ -1033,3 +1033,17 @@ Verified locally:
 - compose comes up on the new images and parses recipe lines through the sidecar.
 
 The workflow itself runs only on GitHub.
+
+## Shopping list: amount first in the per-recipe lines
+
+At the human's request, each per-recipe line under a shopping list item now leads with the
+amount, then the recipe: "1 cup — Chili" rather than "Chili: 1 cup". Amounts are what you scan
+for while shopping, and they now line up at the left edge. An em dash replaces the colon, which
+read oddly after an amount ("1 cup: Chili"). A line with no parsed amount leads with its raw
+ingredient text the same way ("salt to taste — Chili"). Only the API's `sourceLines` strings
+changed; the UI renders them as before.
+
+In the same pass, the item's combined amount (right of the name) went from smaller, grey text
+to the same size, weight and colour as the ingredient name, so the total to buy is as easy to
+read as what to buy. On a phone a long amount ("8 fluid ounces") now takes more of the row, so
+the name wraps sooner; the 50% cap on the amount's width is unchanged.

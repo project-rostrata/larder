@@ -248,7 +248,7 @@ button:disabled { opacity: .6; cursor: default; }
 .shop-name { flex: 1 1 0; min-width: 0; font-weight: 500; overflow-wrap: break-word; }
 /* An amount part ("2 tablespoons") never breaks inside itself; a multi-part amount may break
    between parts. min-width: min-content wins over max-width, so one long part is never split. */
-.shop-amount { flex: 0 1 auto; max-width: 50%; min-width: min-content; font-size: 15px; color: var(--text-secondary); text-align: right; }
+.shop-amount { flex: 0 1 auto; max-width: 50%; min-width: min-content; font-weight: 500; text-align: right; }
 .shop-amount-part { white-space: nowrap; }
 .shop-item-sources { font-size: 13px; line-height: 1.35; color: var(--text-secondary); overflow-wrap: anywhere; }
 .shop-item.checked { opacity: .6; background: var(--surface); box-shadow: none; border-color: var(--border); }
@@ -391,7 +391,6 @@ button:disabled { opacity: .6; cursor: default; }
   .shop-page .recipe-detail-header { gap: 10px; }
   .shop-page .recipe-detail-header .btn-ghost, .shop-page .recipe-detail-header .btn-primary { min-height: 36px; }
   .shop-item-text { font-size: 18px; }
-  .shop-amount { font-size: 15px; }
   .shop-check { width: 32px; height: 32px; }
   .nav-link { padding: 0 8px; }
   .form-row { flex-direction: column; gap: 12px; }

@@ -52,7 +52,8 @@ data class ShoppingListItemResponse(
     val ingredientId: String?,
     // In the owner's pantry: listed in the Pantry group, with no amount to buy.
     val inPantry: Boolean,
-    // One ready-to-show line per contributing recipe: ["Chili: 1 cup", "Pancakes: 2 tablespoons"].
+    // One ready-to-show line per contributing recipe, amount first: ["1 cup — Chili",
+    // "2 tablespoons — Pancakes"].
     // Empty for a manual item.
     val sourceLines: List<String>,
     val sources: List<ShoppingListSourceResponse>,
@@ -143,7 +144,7 @@ fun ShoppingListDetail.toResponse(combiner: Combiner, units: Map<java.util.UUID,
                 checked = item.checked,
                 ingredientId = item.ingredientId?.toString(),
                 inPantry = inPantry,
-                sourceLines = sourceResponses.map { "${it.recipeTitle}: ${it.amount ?: it.rawText}" },
+                sourceLines = sourceResponses.map { "${it.amount ?: it.rawText} — ${it.recipeTitle}" },
                 sources = sourceResponses,
             )
         }.let(::groupForDisplay),

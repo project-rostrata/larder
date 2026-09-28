@@ -89,8 +89,8 @@ async function keyMove(e, list, item) {
   if (await applyItemChange(api.moveShoppingItem(list.id, item.id, before))) refocusGrip(item.id);
 }
 
-// Name first (what you scan for in the store), amount right-aligned and quieter -- borrowed
-// from Mealime's list. Both parts come ready-made from the API.
+// Name first (what you scan for in the store), amount right-aligned at the same size and
+// weight -- the layout borrowed from Mealime's list. Both parts come ready-made from the API.
 function ItemText(item) {
   return span(
     { class: "shop-item-text" },

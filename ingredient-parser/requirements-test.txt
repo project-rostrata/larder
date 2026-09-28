@@ -1,0 +1,9 @@
+# Test-only dependencies, for docker/Dockerfile's parser-test stage (CI) and local runs:
+#   pip install -r requirements.txt -r requirements-test.txt && python -m pytest
+# Pinned exactly, transitive dependencies included, same as requirements.txt. Resolved on
+# Python 3.14.7 on 2026-09-28.
+pytest==9.1.1
+iniconfig==2.3.0
+packaging==26.3
+pluggy==1.6.0
+Pygments==2.21.0

@@ -55,8 +55,8 @@ docker run --rm --network none larder-ingredient-parser python -c \
 ## Testing
 
 ```
-pip install -r requirements.txt pytest
-pytest
+pip install -r requirements.txt -r requirements-test.txt
+python -m pytest
 ```
 
 Tests spin up a real instance of the service (in-process, on an ephemeral port) and hit it over

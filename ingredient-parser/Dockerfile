@@ -2,7 +2,8 @@
 # Single-stage: unlike the Kotlin backend's build/runtime split (which strips out the
 # compiler), there's no analogous build tool to discard here -- pip installs run once and the
 # resulting environment IS the runtime.
-FROM python:3.12-slim
+# Keep in step with PYTHON_IMAGE in docker/Dockerfile, which is what actually ships.
+FROM python:3.14.7-slim-trixie
 
 # Fixed, explicit path rather than relying on $HOME's default -- keeps the NLTK data written
 # during the build step below findable at runtime regardless of which user the container runs

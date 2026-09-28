@@ -16,7 +16,7 @@ docker run -d --name larder --restart unless-stopped \
   -e LARDER_DB_PASSWORD='<a real password>' \
   -e TZ=America/New_York \
   -v /srv/larder:/data \
-  ghcr.io/<owner>/larder:latest
+  ghcr.io/project-rostrata/larder:latest
 ```
 
 Then visit `http://<server>:8080/` and register the first account.
@@ -28,8 +28,7 @@ to GitHub's container registry:
 - `:sha-<short sha>` pins one exact build;
 - pushing a git tag like `v1.0.0` also publishes `:v1.0.0`.
 
-GHCR packages start out private. Either make the package public in its GitHub settings, or run
-`docker login ghcr.io` on the server first, using a personal access token with `read:packages`.
+The package is public, so the server can pull it without logging in.
 
 **Or build it yourself** from a checkout, and use `larder:standalone` as the image name above:
 
@@ -93,7 +92,7 @@ In the one-image setup, don't set `LARDER_DB_URL` or `LARDER_DB_USER`; the entry
 Pull the new image and recreate the container with the same `-v` mount:
 
 ```
-docker pull ghcr.io/<owner>/larder:latest
+docker pull ghcr.io/project-rostrata/larder:latest
 docker rm -f larder
 docker run ...   # the same command as above
 ```
@@ -111,6 +110,6 @@ docker compose -f docker/docker-compose.yml up --build -d
 ```
 
 This builds the Dockerfile's `runtime` stage (the app and sidecar, no Postgres) and runs the
-official `postgres:18.6-alpine` next to it, with data in a named Docker volume. Settings go in
+official `postgres:18.6-alpine3.23` next to it, with data in a named Docker volume. Settings go in
 `docker/.env`. The same list applies, and here `LARDER_DB_PASSWORD` defaults to `devpassword`,
 so override it for anything real.

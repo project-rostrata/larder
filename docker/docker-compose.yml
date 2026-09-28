@@ -9,7 +9,9 @@
 # only state (PROJECT_BRIEF.md section 4 / AGENTS.md).
 services:
   postgres:
-    image: postgres:18.6-alpine
+    # Alpine, with the Alpine release pinned too: switching this image's libc (Alpine/musl ->
+    # Debian/glibc) would change text collation under an existing database's indexes.
+    image: postgres:18.6-alpine3.23
     environment:
       POSTGRES_USER: larder
       POSTGRES_PASSWORD: ${LARDER_DB_PASSWORD:-devpassword}

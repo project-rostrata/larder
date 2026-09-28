@@ -6,13 +6,26 @@
 # together by docker/entrypoint.sh. See docs/decisions.md for the full reasoning, including why
 # this differs from shelf's docker-compose shape.
 
+# ---- pinned base images: bump versions here and only here. CI builds its test stages from this
+# same file, so the tests always run on exactly these images. Explicit patch versions and distro
+# codenames, so nothing changes under a rebuild unless it's changed on purpose; see
+# docs/decisions.md for why these are the versions they are.
+# Temurin 25, the current Java LTS, for both building and running the backend.
+ARG JAVA_IMAGE_VERSION=25.0.4_7
+# Ubuntu 26.04 LTS, the base of the Temurin images.
+ARG UBUNTU_CODENAME=resolute
+# The newest stable Python (longest-supported, until 2030) on Debian 13, the current stable.
+ARG PYTHON_IMAGE=python:3.14.7-slim-trixie
+
 # ---- stage 1: compile the Kotlin backend -- same pattern as shelf's build stage ----
-FROM eclipse-temurin:25.0.4_7-jdk-alpine AS kotlin-build
+FROM eclipse-temurin:${JAVA_IMAGE_VERSION}-jdk-${UBUNTU_CODENAME} AS kotlin-build
 
 ARG KOTLIN_VERSION=2.4.20
 ARG KOTLIN_COMPILER_SHA256=59e9ca74c7904ef2c122b12114937673ccce68de820a663f0ed66ccf8799e0b7
 
-RUN apk add --no-cache bash curl
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl unzip \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSLo /tmp/kotlin-compiler.zip \
       "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/kotlin-compiler-${KOTLIN_VERSION}.zip" \
@@ -27,16 +40,26 @@ COPY backend/ backend/
 RUN backend/lib/fetch-deps.sh
 RUN backend/build.sh
 
-# ---- stage 2: runtime -- needs both a JRE (for the app) and Python (for the sidecar), so this
-# starts from the sidecar's own already-verified base (python:3.12-slim, glibc -- Alpine/musl
-# would force numpy/regex to compile from source instead of installing their manylinux wheels,
-# see ingredient-parser/Dockerfile) and adds a headless JRE on top, rather than the other
-# direction ----
-FROM python:3.12-slim AS runtime
+# ---- backend tests, for CI only (`docker build --target backend-test`); never in an image ----
+FROM kotlin-build AS backend-test
+RUN backend/test.sh
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends openjdk-21-jre-headless \
-    && rm -rf /var/lib/apt/lists/*
+# ---- the Java runtime the app runs on: the same Temurin release the build stage compiles with ----
+FROM eclipse-temurin:${JAVA_IMAGE_VERSION}-jre-${UBUNTU_CODENAME} AS jre
+
+# ---- stage 2: runtime -- needs both a JRE (for the app) and Python (for the sidecar), so this
+# starts from the sidecar's own base (Debian slim, glibc -- Alpine/musl would force numpy/regex
+# to compile from source instead of installing their manylinux wheels, see
+# ingredient-parser/Dockerfile) and adds the JRE on top, rather than the other direction ----
+FROM ${PYTHON_IMAGE} AS runtime
+
+# Temurin's JRE copied in, rather than Debian's openjdk-25-jre-headless package, so build and
+# runtime are the exact same, explicitly pinned Java 25 release; Debian's package version moves
+# with every apt update. Temurin's Linux builds target an old glibc, so they run on any current
+# distro.
+COPY --from=jre /opt/java/openjdk /opt/java/openjdk
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 WORKDIR /app
 
@@ -69,6 +92,13 @@ ENV INGREDIENT_PARSER_PORT=8000
 EXPOSE 8080
 
 ENTRYPOINT ["/entrypoint.sh"]
+
+# ---- sidecar tests, for CI only (`docker build --target parser-test`): the runtime image plus
+# pytest, so the tests run on the exact Python and packages that ship. Never in an image. ----
+FROM runtime AS parser-test
+COPY ingredient-parser/requirements-test.txt ingredient-parser/test_app.py ingredient-parser/
+RUN pip install --no-cache-dir -r ingredient-parser/requirements-test.txt
+RUN cd ingredient-parser && python -m pytest -q -p no:cacheprovider
 
 # ---- stage 3: standalone -- runtime + a bundled Postgres, for a single `docker run` on a server
 # with no compose file and no separate database container. Same approach as shelf's standalone

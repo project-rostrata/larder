@@ -490,14 +490,16 @@ larder/
                                       instance, covering the specific failure modes that
                                       motivated this over a regex parser
   docker/                      Phase 10
-    Dockerfile                   two-stage build: stage 1 compiles the Kotlin backend
-                                   (eclipse-temurin JDK Alpine, pinned kotlinc, same pattern as
-                                   shelf); stage 2 is the runtime, python:3.12-slim (glibc, same
-                                   base ingredient-parser/Dockerfile already verified) +
-                                   openjdk-21-jre-headless added via apt, bundling the compiled
-                                   backend, frontend/, and the sidecar all into one image — a
-                                   deliberate deviation from this plan's original separate-
-                                   service sketch, see docs/decisions.md
+    Dockerfile                   every base image pinned in ARGs at the top (Temurin 25.0.4_7
+                                   on Ubuntu 26.04 `resolute`, python:3.14.7-slim-trixie). Stage 1
+                                   compiles the Kotlin backend (Temurin JDK 25, pinned kotlinc,
+                                   same pattern as shelf); stage 2 is the runtime, the Python base
+                                   (glibc, for the sidecar's wheels) + Temurin's JRE 25 copied in,
+                                   bundling the compiled backend, frontend/, and the sidecar all
+                                   into one image — a deliberate deviation from this plan's
+                                   original separate-service sketch, see docs/decisions.md.
+                                   Test-only stages `backend-test` and `parser-test` are what CI
+                                   builds to run the tests
     entrypoint.sh                 starts the sidecar and the app as two direct child processes,
                                     no supervisor dependency; only the app's own exit ends the
                                     container, not the sidecar's (verified live: killing the

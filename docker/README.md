@@ -26,3 +26,8 @@ shelf's):
   `docker build --target standalone -f docker/Dockerfile -t larder:standalone .`
 
 See `docs/deployment.md` for how to run it.
+
+All base-image versions are build arguments at the top of the `Dockerfile` (Java, Python, and
+the Ubuntu release under the Temurin images), so a version bump is one edit there. CI runs the
+tests by building the `backend-test` and `parser-test` stages, so they always use those same
+versions.

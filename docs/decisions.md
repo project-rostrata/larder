@@ -983,3 +983,53 @@ Compose was re-checked too: it builds the `runtime` target (no Postgres inside),
 healthy, and the sidecar there now listens on 127.0.0.1 only. The workflow file itself can only
 run on GitHub, so it isn't verified beyond being valid YAML and running the same commands locally
 (backend tests, and the sidecar's pytest suite at 10 passed).
+
+## Explicitly pinned base images, Java 25 end to end, tests built from the Dockerfile
+
+Follow-up to a review of v1's maintenance risks (the project aims to minimize maintenance
+releases caused by outside dependencies). At the human's request: pin the base images more
+explicitly, use the latest long-term-support releases where they exist, run Java 25 for both
+building and running, pin the CI runner to `ubuntu-24.04`, and drop `actions/setup-python`.
+
+- **Every base image version sits in ARGs at the top of `docker/Dockerfile`**, with a patch
+  version and a distro codename rather than a floating tag. A rebuild months later gets the same
+  bases, and a Debian or Ubuntu release switch happens only when those lines change. That kind
+  of silent switch already broke a build once: `openjdk-17` disappeared when `python:3.12-slim`
+  moved to trixie.
+  - Java: Temurin **25.0.4_7** (Java 25 is the current LTS), on Ubuntu **26.04 `resolute`**,
+    the newest Ubuntu LTS.
+  - Python: **3.14.7** on Debian 13 `trixie`. Python has no LTS; 3.14 is the newest stable
+    release, which also gives the longest support (to 2030). 3.15 is still a release candidate.
+    The sidecar's exact-pinned packages installed from wheels on 3.14 unchanged, and its tests
+    pass.
+  - Compose's Postgres: `postgres:18.6-alpine3.23`. It stays on Alpine, with the Alpine release
+    pinned, because switching an existing database's image from musl to glibc changes text
+    collation under its indexes.
+  - Not pinned finer, by design: the standalone image's Postgres (PGDG only carries the latest
+    18.x) and apt security updates in the base layers.
+- **Java 25 end to end.** The build stage moved from Temurin's Alpine JDK to its Ubuntu one,
+  and the runtime copies Temurin's JRE (same release) in from `eclipse-temurin:…-jre-resolute`.
+  It replaces Debian's `openjdk-21-jre-headless` rather than switching to trixie's
+  `openjdk-25-jre-headless`, because Debian's package version moves with every apt update.
+  `build.sh`/`test.sh` also pass `-Xjdk-release=25`, so the code is compiled against Java 25's
+  API whatever JDK `kotlinc` itself runs on, closing the "compiles on a newer JDK, fails at
+  runtime" gap. Bytecode is now class-file version 69 (Java 25).
+- **CI tests are Dockerfile stages.** Two test-only stages, `backend-test` (FROM the build
+  stage, runs `test.sh`) and `parser-test` (FROM the runtime, adds pytest from the new pinned
+  `requirements-test.txt`), are built by the workflow's test jobs. This replaces the workflow's
+  own kotlinc download and `setup-python`. Tests now run on exactly the pinned images that ship,
+  and the workflow carries no version numbers, so a bump is one edit. `actions/checkout` is the
+  only action left, and every job runs on `ubuntu-24.04`. With Docker's legacy builder, which
+  builds every stage before the target, local `docker build`s run both test stages too;
+  BuildKit, which CI uses, skips them.
+
+Verified locally:
+- all three CI targets (`backend-test`: 47 passed; `parser-test`: 10 passed on Python 3.14.7;
+  `standalone`) build;
+- the standalone image reports Temurin 25.0.4+7, Python 3.14.7, Postgres 18.6 and Debian 13,
+  with no Debian OpenJDK package installed;
+- the 15-check standalone end-to-end suite (init, parsing, pantry, restart persistence, clean
+  shutdown, exit rules, loopback-only listeners) passes;
+- compose comes up on the new images and parses recipe lines through the sidecar.
+
+The workflow itself runs only on GitHub.

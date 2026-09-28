@@ -16,7 +16,10 @@ CP="$LIB_DIR/postgresql-42.7.13.jar:$LIB_DIR/kotlinx-serialization-core-jvm-1.11
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
+# -Xjdk-release: compile against Java 25's API, the runtime the image ships (docker/Dockerfile),
+# whatever JDK kotlinc itself happens to run on.
 kotlinc \
+  -Xjdk-release=25 \
   -Xplugin="$KOTLIN_HOME/lib/kotlinx-serialization-compiler-plugin.jar" \
   -cp "$CP" \
   -d "$OUT_DIR" \

@@ -15,6 +15,7 @@ rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
 kotlinc \
+  -Xjdk-release=25 \
   -Xplugin="$KOTLIN_HOME/lib/kotlinx-serialization-compiler-plugin.jar" \
   -cp "$CP" \
   -d "$OUT_DIR" \

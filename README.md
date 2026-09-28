@@ -57,7 +57,7 @@ backend, frontend, and sidecar together, plus a `docker-compose.yml` with Postgr
 
 ```
 docker run -d -p 8080:8080 -e LARDER_DB_PASSWORD='<a real password>' -e TZ=America/New_York \
-  -v /srv/larder:/data ghcr.io/<owner>/larder:latest
+  -v /srv/larder:/data ghcr.io/project-rostrata/larder:latest
 ```
 
 One container with everything, Postgres included. The image is built and published by CI on

@@ -90,6 +90,22 @@ async function keyMove(e, list, item) {
   if (await applyItemChange(api.moveShoppingItem(list.id, item.id, before))) refocusGrip(item.id);
 }
 
+// One row per contributing recipe, amount first and lightly emphasized. Each row stays on one
+// line: a recipe title too long for the card is cut off with an ellipsis, and the full line
+// shows on hover.
+function SourceLines(item) {
+  if (!item.sourceLines.length) return null;
+  return div(
+    { class: "shop-item-sources" },
+    item.sourceLines.map((line) =>
+      div(
+        { class: "shop-source", title: line.display },
+        span({ class: "shop-source-amount" }, line.amountDisplay),
+        ` — ${line.recipeTitle}`,
+      )),
+  );
+}
+
 // Name first (what you scan for in the store), amount right-aligned at the same size and
 // weight -- the layout borrowed from Mealime's list. Both parts come ready-made from the API.
 function ItemText(item) {
@@ -181,7 +197,7 @@ export function ShoppingList() {
         div(
           { class: "shop-item-main" },
           ItemText(item),
-          item.sourceLines.length ? div({ class: "shop-item-sources" }, item.sourceLines.map((line) => div(line))) : null,
+          SourceLines(item),
         ),
       );
     }
@@ -205,7 +221,7 @@ export function ShoppingList() {
       div(
         { class: "shop-item-main", onclick: toggle },
         ItemText(item),
-        item.sourceLines.length ? div({ class: "shop-item-sources" }, item.sourceLines.map((line) => div(line))) : null,
+        SourceLines(item),
       ),
       RowMenu(list, item),
     );

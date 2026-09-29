@@ -244,6 +244,9 @@ button:disabled { opacity: .6; cursor: default; }
 /* Shopping-list rows are sized for a phone held in one hand in a store: large text, the amount
    bolded, each item a distinct card, 44px+ tap targets. */
 .shop-list { gap: 10px; }
+/* A little narrower than the meal plan page (720px): easier to scan, and long recipe titles in
+   the per-recipe lines are cut off rather than stretching the cards. */
+.shop-page { max-width: 600px; }
 .shop-page .recipe-detail-title { font-size: 28px; font-weight: 700; }
 .shop-item {
   display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border-strong);
@@ -263,7 +266,9 @@ button:disabled { opacity: .6; cursor: default; }
    between parts. min-width: min-content wins over max-width, so one long part is never split. */
 .shop-amount { flex: 0 1 auto; max-width: 50%; min-width: min-content; font-weight: 500; text-align: right; }
 .shop-amount-part { white-space: nowrap; }
-.shop-item-sources { font-size: 13px; line-height: 1.35; color: var(--text-secondary); overflow-wrap: anywhere; }
+.shop-item-sources { font-size: 13px; line-height: 1.35; color: var(--text-secondary); }
+.shop-source { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shop-source-amount { color: var(--text-primary); font-weight: 500; }
 .shop-item.checked { opacity: .6; background: var(--surface); box-shadow: none; border-color: var(--border); }
 .shop-item.checked .shop-item-text { text-decoration: line-through; }
 .shop-check {

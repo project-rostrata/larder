@@ -25,6 +25,16 @@ data class ShoppingListItemMoveRequest(val beforeItemId: String? = null)
 @Serializable
 data class ShoppingListMergeRequest(val itemIds: List<String>, val remember: Boolean = false)
 
+// One per-recipe line under an item, ready to show: display is the whole line, "1 cup — Chili";
+// amountDisplay ("1 cup", or the raw ingredient text when it had no amount) and recipeTitle are
+// its two parts, for styling them separately. display == amountDisplay + " — " + recipeTitle.
+@Serializable
+data class ShoppingListSourceLine(
+    val display: String,
+    val amountDisplay: String,
+    val recipeTitle: String,
+)
+
 @Serializable
 data class ShoppingListSourceResponse(
     val recipeId: String?,
@@ -52,10 +62,8 @@ data class ShoppingListItemResponse(
     val ingredientId: String?,
     // In the owner's pantry: listed in the Pantry group, with no amount to buy.
     val inPantry: Boolean,
-    // One ready-to-show line per contributing recipe, amount first: ["1 cup — Chili",
-    // "2 tablespoons — Pancakes"].
-    // Empty for a manual item.
-    val sourceLines: List<String>,
+    // One line per contributing recipe, amount first ("1 cup — Chili"). Empty for a manual item.
+    val sourceLines: List<ShoppingListSourceLine>,
     val sources: List<ShoppingListSourceResponse>,
 )
 
@@ -144,7 +152,10 @@ fun ShoppingListDetail.toResponse(combiner: Combiner, units: Map<java.util.UUID,
                 checked = item.checked,
                 ingredientId = item.ingredientId?.toString(),
                 inPantry = inPantry,
-                sourceLines = sourceResponses.map { "${it.amount ?: it.rawText} — ${it.recipeTitle}" },
+                sourceLines = sourceResponses.map {
+                    val amount = it.amount ?: it.rawText
+                    ShoppingListSourceLine("$amount — ${it.recipeTitle}", amount, it.recipeTitle)
+                },
                 sources = sourceResponses,
             )
         }.let(::groupForDisplay),

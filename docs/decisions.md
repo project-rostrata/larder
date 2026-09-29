@@ -1064,3 +1064,19 @@ until the user picks one. `style.css` now keys the light tokens off `data-theme`
 than a `prefers-color-scheme` query, so each token set is written once. The choice is stored
 in `localStorage`, per browser: it's a display preference for one device, not account data, so
 it isn't sent to the API. There is no "back to system" option; clearing site data does that.
+
+## Shopping list: emphasized amounts, one-line recipe rows, narrower cards
+
+At the human's request:
+
+- **Emphasized amounts.** In each per-recipe line under an item, the amount is lightly
+  emphasized (primary text colour, weight 500) against the grey recipe title. To style them
+  separately, the API's `sourceLines` changed from plain strings to objects: `display` (the
+  whole line, "1 cup — Chili"), plus its parts `amountDisplay` and `recipeTitle`. The API still
+  does all the formatting; the UI puts the two parts side by side.
+- **One line per recipe.** Each line stays on one row, and a recipe title too long for the card
+  is cut off with an ellipsis rather than wrapping. `display` shows as a tooltip on hover.
+  Because the amount comes first, it's the recipe title that gets cut, never the amount (unless
+  the amount alone is wider than the card).
+- **Narrower cards.** The shopping list page is now 600px wide at most, down from the 720px it
+  shared with the meal plan page. Phones are unaffected, since they're narrower than that.

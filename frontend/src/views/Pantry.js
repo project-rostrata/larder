@@ -3,6 +3,7 @@ import { state } from "../state.js";
 import { navigate } from "../router.js";
 import { addToPantryByName, removeFromPantry } from "../pantry.js";
 import { TopBar } from "../components/TopBar.js";
+import { Footer } from "../components/Footer.js";
 import { CloseIcon, PlusIcon } from "../icons.js";
 
 const { div, h1, p, span, button, form, input } = van.tags;
@@ -57,5 +58,6 @@ export function Pantry() {
         );
       },
     ),
+    Footer(),
   );
 }

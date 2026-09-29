@@ -3,6 +3,7 @@ import { state } from "../state.js";
 import { navigate } from "../router.js";
 import { startNewPlan } from "../mealPlan.js";
 import { TopBar } from "../components/TopBar.js";
+import { Footer } from "../components/Footer.js";
 import { DialogHost } from "../components/DialogHost.js";
 import { PlanEntryCard } from "../components/PlanEntryCard.js";
 
@@ -47,6 +48,7 @@ export function PastMealPlan() {
         return Content(plan);
       },
     ),
+    Footer(),
     DialogHost(),
   );
 }

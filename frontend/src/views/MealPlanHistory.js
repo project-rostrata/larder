@@ -2,6 +2,7 @@ import van from "../../lib/van-1.6.1.js";
 import { state } from "../state.js";
 import { navigate } from "../router.js";
 import { TopBar } from "../components/TopBar.js";
+import { Footer } from "../components/Footer.js";
 import { DialogHost } from "../components/DialogHost.js";
 
 const { div, h1, button } = van.tags;
@@ -35,6 +36,7 @@ export function MealPlanHistory() {
         },
       ),
     ),
+    Footer(),
     DialogHost(),
   );
 }

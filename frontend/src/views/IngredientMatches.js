@@ -1,6 +1,7 @@
 import van from "../../lib/van-1.6.1.js";
 import { state } from "../state.js";
 import { TopBar } from "../components/TopBar.js";
+import { Footer } from "../components/Footer.js";
 
 const { div, h1, span, p } = van.tags;
 
@@ -33,5 +34,6 @@ export function IngredientMatches() {
         );
       },
     ),
+    Footer(),
   );
 }

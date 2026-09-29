@@ -3,6 +3,7 @@ import { state } from "../state.js";
 import { api } from "../api.js";
 import { applyItemChange } from "../shoppingLists.js";
 import { TopBar } from "../components/TopBar.js";
+import { Footer } from "../components/Footer.js";
 import { DialogHost } from "../components/DialogHost.js";
 import { navigate } from "../router.js";
 import { CheckIcon, PlusIcon, GripIcon, MoreIcon } from "../icons.js";
@@ -302,6 +303,7 @@ export function ShoppingList() {
       },
       ),
     ),
+    Footer(),
     DialogHost(),
   );
 }

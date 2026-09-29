@@ -2,6 +2,7 @@ import van from "../../lib/van-1.6.1.js";
 import { state } from "../state.js";
 import { navigate } from "../router.js";
 import { TopBar } from "../components/TopBar.js";
+import { Footer } from "../components/Footer.js";
 import { DialogHost } from "../components/DialogHost.js";
 import { RecipeCard } from "../components/RecipeCard.js";
 import { PlanEntryCard } from "../components/PlanEntryCard.js";
@@ -116,6 +117,7 @@ export function RecipeList() {
         Grid(),
       ),
     ),
+    Footer(),
     DialogHost(),
   );
 }

@@ -3,6 +3,7 @@ import { state } from "../state.js";
 import { navigate } from "../router.js";
 import { planRecipe } from "../mealPlan.js";
 import { TopBar } from "../components/TopBar.js";
+import { Footer } from "../components/Footer.js";
 import { DialogHost } from "../components/DialogHost.js";
 import { EditIcon, TrashIcon, LinkIcon, PlusIcon } from "../icons.js";
 
@@ -93,6 +94,7 @@ export function RecipeDetail() {
       }
       return DetailContent(state.currentRecipe.val);
     },
+    Footer(),
     DialogHost(),
   );
 }

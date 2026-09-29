@@ -1047,3 +1047,20 @@ In the same pass, the item's combined amount (right of the name) went from small
 to the same size, weight and colour as the ingredient name, so the total to buy is as easy to
 read as what to buy. On a phone a long amount ("8 fluid ounces") now takes more of the row, so
 the name wraps sooner; the 50% cap on the amount's width is unchanged.
+
+## Manual light/dark toggle, in the footer
+
+At the human's request, there is now a manual light/dark switch. It first went in the top bar,
+but on phones the extra button forced "Meal plans" onto two lines and needed tighter spacing
+throughout the bar. The human moved it to a new footer instead: it's rarely used, so scrolling
+to reach it is fine. The footer (`components/Footer.js`) sits at the bottom of every logged-in
+view, pushed to the bottom of the viewport on short pages, and holds only the toggle ("Dark
+mode" / "Light mode", naming what a click switches to).
+
+`theme.js`, a classic script loaded in `<head>`, sets `<html data-theme>` before first paint,
+so the page never flashes the other theme (the `app.js` module is deferred and would). The
+theme comes from the saved choice, or else the system setting, which it keeps following live
+until the user picks one. `style.css` now keys the light tokens off `data-theme` alone, rather
+than a `prefers-color-scheme` query, so each token set is written once. The choice is stored
+in `localStorage`, per browser: it's a display preference for one device, not account data, so
+it isn't sent to the API. There is no "back to system" option; clearing site data does that.

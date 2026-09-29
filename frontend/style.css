@@ -30,30 +30,30 @@
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
+/* Light theme. theme.js sets data-theme before first paint, from the footer toggle's saved
+   choice or else the system setting, so there is no prefers-color-scheme query here. */
+:root[data-theme="light"] {
+  color-scheme: light;
 
-    --bg: #F5F3EF;
-    --surface: #EFEDE7;
-    --card: #FFFFFF;
-    --row-hover: #ECE9E2;
-    --border: rgba(0,0,0,0.08);
-    --border-soft: rgba(0,0,0,0.06);
-    --border-strong: rgba(0,0,0,0.18);
+  --bg: #F5F3EF;
+  --surface: #EFEDE7;
+  --card: #FFFFFF;
+  --row-hover: #ECE9E2;
+  --border: rgba(0,0,0,0.08);
+  --border-soft: rgba(0,0,0,0.06);
+  --border-strong: rgba(0,0,0,0.18);
 
-    --text-primary: #1A1A1D;
-    --text-secondary: #6B6D76;
-    --text-tertiary: #9A9CA6;
+  --text-primary: #1A1A1D;
+  --text-secondary: #6B6D76;
+  --text-tertiary: #9A9CA6;
 
-    --accent-fill: #5E7A32;
-    --accent-fill-hover: #4C6428;
-    --accent-on-surface: #4C6428;
-    --accent-avatar-bg: rgba(76,100,40,0.14);
+  --accent-fill: #5E7A32;
+  --accent-fill-hover: #4C6428;
+  --accent-on-surface: #4C6428;
+  --accent-avatar-bg: rgba(76,100,40,0.14);
 
-    --danger: #A83B2F;
-    --danger-bg: rgba(168,59,47,0.10);
-  }
+  --danger: #A83B2F;
+  --danger-bg: rgba(168,59,47,0.10);
 }
 
 * { box-sizing: border-box; }
@@ -131,6 +131,19 @@ button:disabled { opacity: .6; cursor: default; }
   width: 40px; height: 40px; border-radius: 6px; transition: background-color .12s ease, color .12s ease;
 }
 .icon-btn:hover { background: var(--row-hover); color: var(--text-primary); }
+
+/* Page footer: pushed to the bottom of the viewport on short pages (app-shell is a min-height
+   flex column), after the content on long ones. Holds the rarely used theme toggle. */
+.app-footer {
+  margin-top: auto; padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+  display: flex; justify-content: center;
+}
+.theme-toggle {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px;
+  background: none; border: none; border-radius: 6px; cursor: pointer;
+  font: inherit; font-size: 13px; color: var(--text-tertiary);
+}
+.theme-toggle:hover { background: var(--row-hover); color: var(--text-primary); }
 
 /* ---- recipe card grid ---- */
 

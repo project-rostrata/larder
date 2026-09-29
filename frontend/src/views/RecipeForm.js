@@ -3,6 +3,7 @@ import { state, showError } from "../state.js";
 import { navigate } from "../router.js";
 import { api, ApiError } from "../api.js";
 import { TopBar } from "../components/TopBar.js";
+import { Footer } from "../components/Footer.js";
 import { PlusIcon, CloseIcon } from "../icons.js";
 
 const { div, form, label, input, textarea, button, h1 } = van.tags;
@@ -193,5 +194,6 @@ export function RecipeForm() {
         },
       });
     },
+    Footer(),
   );
 }

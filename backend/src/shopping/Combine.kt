@@ -80,7 +80,16 @@ class Combiner(private val units: Map<UUID, UnitInfo>, private val conversions: 
         }
         mergeViaConversions(buckets, ingredientId)
         if (buckets.isEmpty()) return if (unquantified.isEmpty()) emptyList() else listOf(null to unquantified)
-        buckets.first().sources += unquantified
+        // Next to a bare count ("2 eggs"), a line with no amount ("egg") counts as one: a bare
+        // noun on a list means one of it. Next to a measured amount ("1 tsp salt" + "salt to
+        // taste") a count of one means nothing, so the line only attaches as a source.
+        val bareCount = buckets.firstOrNull { it.space == Space.Unit(null) }
+        if (bareCount != null) {
+            bareCount.total += Rational.of(unquantified.size.toLong())
+            bareCount.sources += unquantified
+        } else {
+            buckets.first().sources += unquantified
+        }
         return buckets.map { amountOf(it) to it.sources.toList() }
     }
 

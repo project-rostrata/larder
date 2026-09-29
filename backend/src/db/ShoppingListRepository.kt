@@ -271,21 +271,22 @@ class ShoppingListRepository(private val database: Database) {
         ) > 0
 
     // Folds `others` into `survivor`: their sources move over (a manual item, which has none,
-    // becomes an "Added manually" source so its text isn't lost), the survivor takes the
+    // becomes an "Added manually" source so its text isn't lost -- the survivor included, so a
+    // later merge still counts it; see Combiner's bare-count rule), the survivor takes the
     // recomputed quantity (null when the units couldn't all be combined), and the others are
     // deleted. The survivor stays checked only if every merged item was.
     fun merge(listId: UUID, ownerId: UUID, survivor: ShoppingListItemRow, others: List<ShoppingListItemRow>,
               quantity: Rational?, unitId: UUID?, allChecked: Boolean): Boolean = database.transaction { tx ->
         if (!ownsList(tx, listId, ownerId)) return@transaction false
         val otherIds = others.map { it.id }.toTypedArray()
-        for (other in others) {
+        for (item in listOf(survivor) + others) {
             val hasSources = tx.queryOne(
                 "SELECT EXISTS (SELECT 1 FROM shopping_list_item_sources WHERE shopping_list_item_id = ?) AS e",
-                bind = { it.setObject(1, other.id) },
+                bind = { it.setObject(1, item.id) },
                 mapRow = { it.getBoolean("e") },
             )
             if (!hasSources) {
-                insertSource(tx, survivor.id, SourceLine(null, MANUAL_SOURCE_TITLE, null, other.name, null, null, other.quantity, other.unitId))
+                insertSource(tx, survivor.id, SourceLine(null, MANUAL_SOURCE_TITLE, null, item.name, null, null, item.quantity, item.unitId))
             }
         }
         tx.update(

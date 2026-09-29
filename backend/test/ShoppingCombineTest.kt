@@ -113,6 +113,39 @@ fun testQuantityLessLineAttachesToQuantifiedItem() {
     assertEquals(2, items[0].sources.size)
 }
 
+// "2 eggs" + "egg": the bare noun means one egg.
+fun testQuantityLessLineCountsAsOneNextToBareCount() {
+    val items = Combiner(units, emptyList()).combine(listOf(
+        line("A", egg, "egg", null, null, raw = "egg"), line("B", egg, "egg", r(2), null),
+    ))
+    assertEquals(1, items.size)
+    assertEquals(r(3), items[0].quantity)
+    assertEquals(null, items[0].unitId)
+    assertEquals(2, items[0].sources.size)
+}
+
+// A manual merge of "eggs - 2" with a hand-added "egg" (no ingredient, no amount) -- the
+// reported bug, which gave 2.
+fun testManualMergeCountsAmountlessItemAsOne() {
+    val amounts = Combiner(units, emptyList()).amounts(listOf(
+        line("Added manually", null, null, null, null, raw = "egg"), line("B", egg, "eggs", r(2), null),
+    ), null)
+    assertEquals(1, amounts.size)
+    assertEquals(r(3), amounts[0].quantity)
+    assertEquals(null, amounts[0].unitId)
+}
+
+// Only a bare count takes the one: "3 cloves garlic" + "garlic" stays 3 cloves.
+fun testQuantityLessLineNotCountedNextToCountUnit() {
+    val items = Combiner(units, emptyList()).combine(listOf(
+        line("A", garlic, "garlic", r(3), clove), line("B", garlic, "garlic", null, null),
+    ))
+    assertEquals(1, items.size)
+    assertEquals(r(3), items[0].quantity)
+    assertEquals(clove.id, items[0].unitId)
+    assertEquals(2, items[0].sources.size)
+}
+
 fun testOnlyQuantityLessLinesGiveOneUnquantifiedItem() {
     val items = Combiner(units, emptyList()).combine(listOf(
         line("A", salt, "salt", null, null), line("B", salt, "salt", null, null),

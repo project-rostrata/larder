@@ -1080,3 +1080,24 @@ At the human's request:
   the amount alone is wider than the card).
 - **Narrower cards.** The shopping list page is now 600px wide at most, down from the 720px it
   shared with the meal plan page. Phones are unaffected, since they're narrower than that.
+
+## Merging: an item with no amount counts as one next to a bare count
+
+Bug report from the human: merging "eggs" (2) with a hand-added "egg" gave 2, where they
+expected 3. Two causes:
+
+- The combiner only added up lines that had a quantity. A line with no amount was attached as a
+  source but never counted, and a merge left out a hand-added item (which has no sources)
+  entirely.
+- When the surviving item was itself hand-added, its own text was never saved as a source, so
+  a later merge recalculated without it.
+
+**The rule now**: next to a bare count (a quantity with no unit, like "2 eggs"), a line with no
+amount counts as one, since a bare noun on a list means one of it. Next to a measured amount
+("1 tsp salt" + "salt to taste", "3 cloves garlic" + "garlic") it still only attaches as a
+source, because "one" means nothing in teaspoons or cloves. This applies both to automatic
+combining when a list is built and to manual merges. A merge now includes hand-added items, and
+a hand-added survivor gets its own "Added manually" source like the other merged items, so
+merging again later still counts it. An item with no amount on its own still shows no amount.
+
+Lists merged before this fix keep their stored totals.

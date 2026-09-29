@@ -3,12 +3,14 @@ package larder.api
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import larder.db.IngredientRepository
+import larder.db.MANUAL_SOURCE_TITLE
 import larder.db.MealPlanRepository
 import larder.db.RecipeSelection
 import larder.db.ShoppingListItemRow
 import larder.db.ShoppingListRepository
 import larder.shopping.Combiner
 import larder.shopping.Rational
+import larder.shopping.SourceLine
 import java.util.UUID
 
 private const val MAX_ITEM_TEXT_LENGTH = 200
@@ -134,7 +136,11 @@ class ShoppingListItemHandlers(
         val items = ids.map { byId[it] ?: return Err(404, "NOT_FOUND", "Item not found: $it") }
 
         val survivor = items.first()
-        val allSources = detail.sources.filter { src -> items.any { it.id == src.itemId } }.map { it.toLine() }
+        // A manual item has no sources of its own; it counts as one line, just as it's stored
+        // once merged (ShoppingListRepository.merge).
+        val manualLines = items.filter { item -> detail.sources.none { it.itemId == item.id } }
+            .map { SourceLine(null, MANUAL_SOURCE_TITLE, null, it.name, null, null, it.quantity, it.unitId) }
+        val allSources = detail.sources.filter { src -> items.any { it.id == src.itemId } }.map { it.toLine() } + manualLines
         val parts = combinerFor(lists).amounts(allSources, survivor.ingredientId)
         val single = parts.singleOrNull()
         if (!lists.merge(id, user.id, survivor, items.drop(1), single?.quantity, single?.unitId, items.all { it.checked })) {

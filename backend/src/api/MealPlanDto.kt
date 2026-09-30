@@ -30,6 +30,10 @@ data class MealPlanEntryResponse(
     // scaled, otherwise the recipe's own servings text (may be null).
     val servingsDisplay: String?,
     val createdAt: String,
+    // Set when this meal's recipe was changed for this meal alone: recipeId is then the changed
+    // copy, and originalRecipeId the recipe it came from. modifiedDisplay is "Modified" then.
+    val originalRecipeId: String?,
+    val modifiedDisplay: String?,
 )
 
 @Serializable
@@ -102,4 +106,6 @@ fun MealPlanEntryRow.toResponse() = MealPlanEntryResponse(
         else -> recipeServingsText
     },
     createdAt = createdAt.toString(),
+    originalRecipeId = if (recipeDeleted) null else originalRecipeId?.toString(),
+    modifiedDisplay = if (recipeDeleted || originalRecipeId == null) null else "Modified",
 )

@@ -1,5 +1,6 @@
 package larder.db
 
+import larder.ingredients.ResolvedIngredientLine
 import java.math.BigDecimal
 import java.sql.ResultSet
 import java.sql.SQLException
@@ -8,7 +9,7 @@ import java.util.UUID
 private const val ENTRY_SELECT = """
     SELECT e.id, e.owner_id, e.meal_plan_id, e.recipe_id, e.label, e.servings_multiplier, e.created_at,
            r.title AS recipe_title, r.servings AS recipe_servings, r.servings_text AS recipe_servings_text,
-           (r.deleted_at IS NOT NULL) AS recipe_deleted
+           (r.deleted_at IS NOT NULL) AS recipe_deleted, r.variant_of_recipe_id
     FROM meal_plan_entries e
     JOIN recipes r ON r.id = e.recipe_id
 """
@@ -41,18 +42,61 @@ class MealPlanRepository(private val database: Database) {
             tx.queryOne("$ENTRY_SELECT WHERE e.id = ?", bind = { it.setObject(1, id) }, mapRow = ::toEntryRow)
         }
 
-    // Only entries of the active plan can be removed -- history is a record, not editable.
+    // Only entries of the active plan can be removed -- history is a record, not editable. The
+    // entry's variant, if it had one, goes with it: nothing else refers to it.
     fun delete(id: UUID, ownerId: UUID): Boolean = database.transaction { tx ->
-        val planId = tx.queryOneOrNull(
+        val (planId, recipeId) = tx.queryOneOrNull(
             """
             DELETE FROM meal_plan_entries e USING meal_plans p
             WHERE e.id = ? AND e.meal_plan_id = p.id AND p.owner_id = ? AND p.archived_at IS NULL
-            RETURNING e.meal_plan_id
+            RETURNING e.meal_plan_id, e.recipe_id
             """.trimIndent(),
             bind = { stmt -> stmt.setObject(1, id); stmt.setObject(2, ownerId) },
-            mapRow = { it.getObject("meal_plan_id", UUID::class.java) },
+            mapRow = { it.getObject("meal_plan_id", UUID::class.java) to it.getObject("recipe_id", UUID::class.java) },
         ) ?: return@transaction false
+        deleteVariant(tx, recipeId)
         resetPlanShoppingList(tx, planId)
+        true
+    }
+
+    // Saves a changed recipe for one entry of the owner's active plan. The first save copies the
+    // recipe into a variant for this entry alone and points the entry at it; later saves edit
+    // that variant. The original is never touched. Null when the entry isn't in the owner's
+    // active plan, or its recipe was deleted.
+    fun saveVariant(
+        entryId: UUID,
+        ownerId: UUID,
+        fields: RecipeFields,
+        ingredientLines: List<ResolvedIngredientLine>,
+    ): PersistedRecipe? = database.transaction { tx ->
+        val entry = activeEntry(tx, entryId, ownerId) ?: return@transaction null
+        if (entry.recipeDeleted) return@transaction null
+        val saved = if (entry.originalRecipeId != null) {
+            replaceContents(tx, entry.recipeId, ownerId, fields, ingredientLines)
+        } else {
+            insertVariant(tx, entry.recipeId, ownerId, fields, ingredientLines).also { variant ->
+                tx.update(
+                    "UPDATE meal_plan_entries SET recipe_id = ? WHERE id = ?",
+                    bind = { stmt -> stmt.setObject(1, variant.recipe.id); stmt.setObject(2, entryId) },
+                )
+            }
+        }
+        resetPlanShoppingList(tx, entry.mealPlanId)
+        saved
+    }
+
+    // Points an active-plan entry back at its original recipe and deletes its variant. An entry
+    // that was never modified is left as it is. False when the entry isn't in the owner's active
+    // plan.
+    fun revertVariant(entryId: UUID, ownerId: UUID): Boolean = database.transaction { tx ->
+        val entry = activeEntry(tx, entryId, ownerId) ?: return@transaction false
+        val originalId = entry.originalRecipeId ?: return@transaction true
+        tx.update(
+            "UPDATE meal_plan_entries SET recipe_id = ? WHERE id = ?",
+            bind = { stmt -> stmt.setObject(1, originalId); stmt.setObject(2, entryId) },
+        )
+        deleteVariant(tx, entry.recipeId)
+        resetPlanShoppingList(tx, entry.mealPlanId)
         true
     }
 
@@ -66,8 +110,9 @@ class MealPlanRepository(private val database: Database) {
 
     // Archives the active plan if it has any entries (an empty one is simply reused, so history
     // never fills with empty plans) and leaves a fresh active plan, optionally seeded with
-    // copyFrom's entries (soft-deleted recipes skipped). Entries are never deleted here: even
-    // ones whose recipe was soft-deleted are kept, in the archived plan.
+    // copyFrom's entries (soft-deleted recipes skipped). A modified entry is copied as its
+    // original recipe: variants are one-off changes for one meal. Entries are never deleted here:
+    // even ones whose recipe was soft-deleted are kept, in the archived plan.
     fun startNew(ownerId: UUID, copyFrom: UUID?) = database.transaction { tx ->
         val current = tx.queryOneOrNull(
             "SELECT $PLAN_COLUMNS FROM meal_plans WHERE owner_id = ? AND archived_at IS NULL",
@@ -90,10 +135,12 @@ class MealPlanRepository(private val database: Database) {
             tx.update(
                 """
                 INSERT INTO meal_plan_entries (owner_id, meal_plan_id, recipe_id, label, servings_multiplier, created_at)
-                SELECT e.owner_id, ?, e.recipe_id, e.label, e.servings_multiplier,
+                SELECT e.owner_id, ?, o.id, e.label, e.servings_multiplier,
                        now() + (row_number() OVER (ORDER BY e.created_at)) * interval '1 microsecond'
-                FROM meal_plan_entries e JOIN recipes r ON r.id = e.recipe_id
-                WHERE e.meal_plan_id = ? AND e.owner_id = ? AND r.deleted_at IS NULL
+                FROM meal_plan_entries e
+                JOIN recipes r ON r.id = e.recipe_id
+                JOIN recipes o ON o.id = COALESCE(r.variant_of_recipe_id, r.id)
+                WHERE e.meal_plan_id = ? AND e.owner_id = ? AND o.deleted_at IS NULL
                 """.trimIndent(),
                 bind = { stmt -> stmt.setObject(1, planId); stmt.setObject(2, copyFrom); stmt.setObject(3, ownerId) },
             )
@@ -177,6 +224,25 @@ class MealPlanRepository(private val database: Database) {
         }
     }
 
+    private fun activeEntry(tx: Transaction, entryId: UUID, ownerId: UUID): MealPlanEntryRow? =
+        tx.queryOneOrNull(
+            """
+            $ENTRY_SELECT
+            JOIN meal_plans p ON p.id = e.meal_plan_id
+            WHERE e.id = ? AND p.owner_id = ? AND p.archived_at IS NULL
+            """.trimIndent(),
+            bind = { stmt -> stmt.setObject(1, entryId); stmt.setObject(2, ownerId) },
+            mapRow = ::toEntryRow,
+        )
+
+    // A no-op for an ordinary recipe. Call only once no entry points at the variant.
+    private fun deleteVariant(tx: Transaction, recipeId: UUID) {
+        tx.update(
+            "DELETE FROM recipes WHERE id = ? AND variant_of_recipe_id IS NOT NULL",
+            bind = { it.setObject(1, recipeId) },
+        )
+    }
+
     private fun insertEntry(tx: Transaction, ownerId: UUID, planId: UUID, recipeId: UUID, label: String?, multiplier: BigDecimal): UUID {
         val id = UUID.randomUUID()
         tx.update(
@@ -209,6 +275,7 @@ private fun toEntryRow(rs: ResultSet) = MealPlanEntryRow(
     recipeServings = rs.getBigDecimal("recipe_servings"),
     recipeServingsText = rs.getString("recipe_servings_text"),
     recipeDeleted = rs.getBoolean("recipe_deleted"),
+    originalRecipeId = rs.getObject("variant_of_recipe_id", UUID::class.java),
 )
 
 private fun toPlanRow(rs: ResultSet) = MealPlanRow(

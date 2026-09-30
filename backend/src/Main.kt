@@ -8,6 +8,7 @@ import larder.api.MealPlanDeleteHandler
 import larder.api.MealPlanGetHandler
 import larder.api.MealPlanHistoryHandler
 import larder.api.MealPlanListHandler
+import larder.api.MealPlanRecipeHandlers
 import larder.api.MealPlanStartHandler
 import larder.api.ShoppingListItemHandlers
 import larder.api.LogoutHandler
@@ -100,6 +101,7 @@ fun main() {
     val mealPlanListHandler = MealPlanListHandler(mealPlan)
     val mealPlanCreateHandler = MealPlanCreateHandler(mealPlan, recipes)
     val mealPlanDeleteHandler = MealPlanDeleteHandler(mealPlan)
+    val mealPlanRecipeHandlers = MealPlanRecipeHandlers(mealPlan, ingredientParser, ingredientResolver)
     val mealPlanStartHandler = MealPlanStartHandler(mealPlan)
     val mealPlanHistoryHandler = MealPlanHistoryHandler(mealPlan)
     val mealPlanGetHandler = MealPlanGetHandler(mealPlan)
@@ -132,6 +134,8 @@ fun main() {
     router.get("/api/meal-plan", requireAuth(sessions, users, mealPlanListHandler::handle))
     router.post("/api/meal-plan", requireAuth(sessions, users, mealPlanCreateHandler::handle))
     router.delete("/api/meal-plan/:id", requireAuth(sessions, users, mealPlanDeleteHandler::handle))
+    router.put("/api/meal-plan/:id/recipe", requireAuth(sessions, users, mealPlanRecipeHandlers::save))
+    router.delete("/api/meal-plan/:id/recipe", requireAuth(sessions, users, mealPlanRecipeHandlers::revert))
     router.get("/api/meal-plans", requireAuth(sessions, users, mealPlanHistoryHandler::handle))
     router.post("/api/meal-plans", requireAuth(sessions, users, mealPlanStartHandler::handle))
     router.get("/api/meal-plans/:id", requireAuth(sessions, users, mealPlanGetHandler::handle))

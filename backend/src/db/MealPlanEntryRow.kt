@@ -19,6 +19,9 @@ data class MealPlanEntryRow(
     val recipeServings: BigDecimal?,
     val recipeServingsText: String?,
     val recipeDeleted: Boolean,
+    // Set when this entry's recipe is its own modified copy (a variant): the recipe it was
+    // copied from. recipeId is then the variant's id.
+    val originalRecipeId: UUID?,
 )
 
 data class MealPlanRow(val id: UUID, val ownerId: UUID, val createdAt: Instant, val archivedAt: Instant?)

@@ -20,4 +20,7 @@ data class RecipeRow(
     val createdAt: Instant,
     val updatedAt: Instant,
     val deletedAt: Instant?,
+    // Set on a meal-plan entry's private copy (see MealPlanRepository.saveVariant): the recipe it
+    // was copied from. Null for every ordinary recipe.
+    val variantOfRecipeId: UUID?,
 )

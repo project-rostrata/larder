@@ -33,6 +33,8 @@ data class RecipeResponse(
     val createdAt: String,
     val updatedAt: String,
     val display: RecipeDisplay,
+    // Set when this is a meal's own modified copy: the recipe it was copied from.
+    val originalRecipeId: String?,
 )
 
 // Separate from RecipeIngredientResponse specifically for ingredientWasNewlyCreated: a fact
@@ -94,6 +96,7 @@ fun RecipeRow.toResponse(ingredients: List<RecipeIngredientRow>): RecipeResponse
     createdAt = createdAt.toString(),
     updatedAt = updatedAt.toString(),
     display = toDisplay(),
+    originalRecipeId = variantOfRecipeId?.toString(),
 )
 
 // newlyCreatedFlags must be in the same order as persisted.ingredients — both ultimately trace

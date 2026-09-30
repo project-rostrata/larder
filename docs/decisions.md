@@ -1101,3 +1101,51 @@ a hand-added survivor gets its own "Added manually" source like the other merged
 merging again later still counts it. An item with no amount on its own still shows no amount.
 
 Lists merged before this fix keep their stored totals.
+
+## Changing a planned meal's recipe for that meal only (variants)
+
+A user asked to be able to change a recipe for one planned meal: carrots instead of parsnips
+because that's what the store had, or a change for a guest's allergy. The planned meal must still
+refer to the original recipe. This change covers the data model and API; the UI and a "what's
+different from the original" view come later.
+
+Decisions (the human's choices):
+
+- **Copy on first edit.** The first save of a planned meal's recipe makes a private copy, a
+  *variant*, for that one entry. It's a snapshot: later edits to the original don't reach it.
+  The alternative, storing only the changes and applying them over the live original, was
+  rejected. Saving a recipe deletes and rewrites every ingredient line, so a stored change would
+  have nothing stable to attach to, and it would need rules for a change whose line was edited
+  or removed.
+- **Copying a past plan uses the originals.** Variants are one-off changes for one meal, so a
+  new plan seeded from a past one ("Use again") gets the original recipes.
+
+**Model.** A variant is an ordinary `recipes` row with its own `recipe_ingredients`, plus
+`variant_of_recipe_id` naming the original (migration 0008). The entry's `recipe_id` points at
+the variant. Everything that reads an entry's recipe (the plan, the shopping list, the recipe
+page) therefore uses the version that will be cooked, with no changes.
+
+Rules:
+
+- A variant belongs to exactly one entry, is always one step from an original, and has the same
+  owner.
+- **Lifetime:** removing the entry, or reverting it, hard-deletes the variant. It's the one kind
+  of recipe the app hard-deletes, which is safe because nothing else refers to it.
+- **Deletion:** soft-deleting an original also soft-deletes its variants. A modified entry then
+  leaves the active plan and shows as deleted in past plans, exactly like an unmodified one.
+- **Hidden from recipe endpoints:** variants don't appear in `GET /api/recipes`. `PUT` and
+  `DELETE /api/recipes/:id` answer 404 for them, and they can't be added to a plan (403). Only
+  `GET /api/recipes/:id` returns them, with `originalRecipeId`, so a planned meal's recipe page
+  can show what will be cooked.
+- **Active plan only:** variants are edited or reverted only through the active plan's entries,
+  since history is read-only.
+
+**API:**
+
+- **`PUT /api/meal-plan/:id/recipe`** takes the same body as `PUT /api/recipes/:id` and answers
+  with the same shape, for the variant. The first call creates the variant; later calls edit it.
+- **`DELETE /api/meal-plan/:id/recipe`** reverts the meal to the original, and succeeds as a
+  no-op for an unmodified meal.
+- **Plan entries** now carry `originalRecipeId` and `modifiedDisplay` ("Modified"), both null for
+  an unmodified meal.
+- **The shopping list** is reset whenever a variant is saved or reverted, as for any plan change.

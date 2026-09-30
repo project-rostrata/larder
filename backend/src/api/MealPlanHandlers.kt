@@ -4,6 +4,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import larder.db.MealPlanRepository
 import larder.db.RecipeRepository
+import larder.ingredients.IngredientLineParser
+import larder.ingredients.IngredientResolver
 import java.math.BigDecimal
 import java.util.UUID
 
@@ -42,7 +44,8 @@ class MealPlanCreateHandler(
         // owner-scoped, deleted-filtered lookup answers "doesn't exist", "deleted", and "not
         // yours" with the same 403, so the response never reveals whether someone else's recipe
         // id is real.
-        val recipe = recipes.findById(recipeId, user.id)
+        // A meal's modified copy can't be planned on its own; it's reached only through its entry.
+        val recipe = recipes.findById(recipeId, user.id)?.takeIf { it.variantOfRecipeId == null }
             ?: return Err(403, "NOT_OWNED", "Recipe does not belong to the authenticated user")
 
         val multiplier = when {
@@ -70,6 +73,38 @@ class MealPlanDeleteHandler(private val mealPlan: MealPlanRepository) {
         val id = ctx.pathParams["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
             ?: return Err(400, "INVALID_INPUT", "invalid meal plan entry id")
         if (!mealPlan.delete(id, user.id)) return Err(404, "NOT_FOUND", "Meal plan entry not found")
+        return Ok("""{"status":"ok"}""")
+    }
+}
+
+// Changing a planned meal's recipe for that meal alone. PUT takes the same body as
+// PUT /api/recipes/:id and answers with the same shape, for the changed copy; the first save
+// makes the copy (MealPlanRepository.saveVariant). DELETE reverts the meal to the original.
+// Both work only on the active plan's entries: 404 otherwise.
+class MealPlanRecipeHandlers(
+    private val mealPlan: MealPlanRepository,
+    private val parser: IngredientLineParser,
+    private val resolver: IngredientResolver,
+) {
+    fun save(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
+        val id = ctx.pathParams["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            ?: return Err(400, "INVALID_INPUT", "invalid meal plan entry id")
+        val request = try {
+            Json.decodeFromString<RecipeRequest>(ctx.readBody())
+        } catch (e: Exception) {
+            return Err(400, "INVALID_BODY", "Malformed request body")
+        }
+        validateRecipeRequest(request)?.let { return Err(400, "INVALID_INPUT", it) }
+        val resolvedLines = resolveIngredientLines(parser, resolver, request.ingredients)
+        val persisted = mealPlan.saveVariant(id, user.id, request.toFields(), resolvedLines)
+            ?: return Err(404, "NOT_FOUND", "Meal plan entry not found")
+        return Ok(Json.encodeToString(persisted.toWriteResponse(resolvedLines.map { it.ingredientWasNewlyCreated })))
+    }
+
+    fun revert(ctx: RouteContext, user: AuthenticatedUser): ApiResult<String> {
+        val id = ctx.pathParams["id"]?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            ?: return Err(400, "INVALID_INPUT", "invalid meal plan entry id")
+        if (!mealPlan.revertVariant(id, user.id)) return Err(404, "NOT_FOUND", "Meal plan entry not found")
         return Ok("""{"status":"ok"}""")
     }
 }

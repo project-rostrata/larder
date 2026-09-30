@@ -60,17 +60,19 @@ internal fun resetPlanShoppingList(tx: Transaction, mealPlanId: UUID) {
     tx.update("DELETE FROM shopping_lists WHERE meal_plan_id = ?", bind = { it.setObject(1, mealPlanId) })
 }
 
-// A recipe edit or deletion changes what its active plan's list should contain.
+// A recipe edit or deletion changes what its active plan's list should contain. Entries on the
+// recipe's meal-plan variants count too: deleting a recipe deletes its variants.
 internal fun resetShoppingListsForRecipe(tx: Transaction, recipeId: UUID) {
     tx.update(
         """
         DELETE FROM shopping_lists WHERE meal_plan_id IN (
             SELECT e.meal_plan_id FROM meal_plan_entries e
             JOIN meal_plans p ON p.id = e.meal_plan_id
-            WHERE e.recipe_id = ? AND p.archived_at IS NULL
+            JOIN recipes r ON r.id = e.recipe_id
+            WHERE (r.id = ? OR r.variant_of_recipe_id = ?) AND p.archived_at IS NULL
         )
         """.trimIndent(),
-        bind = { it.setObject(1, recipeId) },
+        bind = { stmt -> stmt.setObject(1, recipeId); stmt.setObject(2, recipeId) },
     )
 }
 
